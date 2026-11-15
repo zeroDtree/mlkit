@@ -65,7 +65,7 @@ def main(cfg: DictConfig):
         get_dataset=get_dataset,
         get_collate=get_collate_fn,
         post_dist_teardown=post_dist_teardown,
-        save_dir_suffix=f"-{cfg.optimizer.name}-{cfg.diffuser.mode}",
+        run_suffix=f"-{cfg.optimizer.name}-{cfg.diffuser.mode}",
     )
     run_experiment(cfg, spec)
 

@@ -162,7 +162,9 @@ A conditional run rewrites that loss in the diffuser's `POST_COMPUTE_LOSS` hook.
 
 `BasePipeline.eval` is empty. `MyDistributedPipeline.eval` is the eval the clocks call. It emits `PRE_EVAL`, switches the model to eval, and runs `compute_loss` on each eval batch with `phase="eval"`. Each batch emits `PRE_EVAL_STEP` and `POST_EVAL_STEP`.
 
-The scalar loss is repeated across the batch dimension and passed to `gather_for_metrics`, so the last incomplete shard is trimmed before the mean, max, min, and standard deviation. An empty loader yields NaN for each of those four. The main process reports them at the current global step, which the training loop has already incremented. The method then switches the model back to train, shares a deferred error, and emits `POST_EVAL`.
+The scalar loss is repeated across the batch dimension and passed to `gather_for_metrics`, so the last incomplete shard is trimmed before the mean, max, min, and standard deviation. An empty loader yields NaN for each of those four. The numeric scalars in the model's `model_output["metrics"]` take the same path through an object gather. Each key is averaged over the samples that report it and logged as `eval/<key>`. The main process reports all of these in one payload at the current global step, which the training loop has already incremented. The method then switches the model back to train, shares a deferred error, and emits `POST_EVAL`.
+
+`POST_EVAL_STEP` sees the full `model_output` in `result`. The entries in `eval_results` keep only `eval_loss` and `metrics`, so a long eval does not hold every batch's outputs.
 
 ## Checkpoints
 
@@ -228,7 +230,7 @@ After `pipeline.train()` returns inside `run_experiment`, optional `pre_dist_tea
 | `PRE_EVAL` | Start of `eval`, with `eval_dataloader` |
 | `PRE_EVAL_STEP` | Before one eval batch |
 | `POST_EVAL_STEP` | After one eval batch, with `result` and `loss` |
-| `POST_EVAL` | After the gathered metrics, with `eval_results` |
+| `POST_EVAL` | After the gathered metrics, with `eval_results` (`eval_loss` and `metrics` per batch) |
 | `PRE_SAVE` | Start of `save`, before any early return |
 | `POST_SAVE` | After the temp directory is renamed into place |
 | `PRE_LOAD` | Start of `load` |

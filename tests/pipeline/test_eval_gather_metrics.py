@@ -65,14 +65,36 @@ class RecordingLog(BaseCallback):
         self.payload.update(kwargs["metrics"])
 
 
+class MetricModel(ZeroModel):
+    """Reports the batch mean of ``y`` as a model metric."""
+
+    def forward(self, x, y):
+        out = super().forward(x, y)
+        out["metrics"] = {"y_mean": y.mean(), "note": "not numeric"}
+        return out
+
+
+class RecordingEval(BaseCallback):
+    def __init__(self):
+        self.step_results: list[dict] = []
+        self.eval_results: list[dict] = []
+
+    def on_event(self, event: CallbackEvent, *args, **kwargs) -> None:
+        del args
+        if event is CallbackEvent.POST_EVAL_STEP:
+            self.step_results.append(dict(kwargs["result"]))
+        elif event is CallbackEvent.POST_EVAL:
+            self.eval_results = kwargs["eval_results"]
+
+
 def collate_fn(batch):
     xs = torch.stack([b["x"] for b in batch])
     ys = torch.stack([b["y"] for b in batch])
     return {"x": xs, "y": ys}
 
 
-def _make_pipeline(values: list[float]) -> MyDistributedPipeline:
-    model = ZeroModel()
+def _make_pipeline(values: list[float], model: torch.nn.Module | None = None) -> MyDistributedPipeline:
+    model = model if model is not None else ZeroModel()
     optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda _step: 1.0)
     logger = logging.getLogger("eval_gather_metrics")
@@ -144,6 +166,8 @@ def test_eval_aggregates_across_simulated_shards(monkeypatch):
     def fake_gather(local_tensor, *args, **kwargs):
         # In single-process, original gather is identity; append the other shard.
         local = original_gather(local_tensor, *args, **kwargs)
+        if kwargs.get("use_gather_object"):
+            return local
         other = next(other_iter)
         return torch.cat([local.detach().cpu(), other.detach().cpu()])
 
@@ -166,3 +190,38 @@ def test_eval_aggregates_across_simulated_shards(monkeypatch):
     # Local-only mean would be wrong (would be ~7.5); ensure we didn't fall back to that.
     local_only = torch.tensor([2.5, 2.5, 12.5, 12.5])
     assert abs(logged["mean_eval_loss"] - local_only.mean().item()) > 1.0
+
+
+def test_eval_logs_model_metrics_with_eval_prefix():
+    pipeline = _make_pipeline([1.0, 2.0, 3.0, 4.0], model=MetricModel())
+    recorder, evals = RecordingLog(), RecordingEval()
+    pipeline.add_callbacks([recorder, evals])
+    pipeline.eval()
+
+    # Batch means of y are 1.5 and 3.5; non-numeric metrics are not logged.
+    assert abs(recorder.payload["eval/y_mean"] - 2.5) < 1e-6
+    assert "eval/note" not in recorder.payload
+    assert "mean_eval_loss" in recorder.payload
+    assert all("model_output" in result for result in evals.step_results)
+    assert [set(result) for result in evals.eval_results] == [{"eval_loss", "metrics"}] * 2
+
+
+def test_eval_metrics_average_over_the_samples_that_report_them(monkeypatch):
+    """A simulated second shard reports ``y_mean`` on its first batch only."""
+    pipeline = _make_pipeline([1.0, 2.0, 3.0, 4.0], model=MetricModel())
+    other_shard = iter([[{"y_mean": 10.0}] * 2, [{}] * 2])
+    original_gather = pipeline.accelerator.gather_for_metrics
+
+    def fake_gather(local, *args, **kwargs):
+        gathered = original_gather(local, *args, **kwargs)
+        if kwargs.get("use_gather_object"):
+            return [*gathered, *next(other_shard)]
+        return gathered
+
+    monkeypatch.setattr(pipeline.accelerator, "gather_for_metrics", fake_gather)
+    recorder = RecordingLog()
+    pipeline.add_callbacks([recorder])
+    pipeline.eval()
+
+    # Local samples: 1.5, 1.5, 3.5, 3.5. The other shard adds 10.0 twice.
+    assert abs(recorder.payload["eval/y_mean"] - 5.0) < 1e-6

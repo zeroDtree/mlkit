@@ -52,6 +52,11 @@ class MaterializedRun:
 class ExperimentSpec:
     """Specification for :func:`mlkit.util.experiment.run_experiment`.
 
+    ``get_model`` may return a bare model or a bundle dict with ``"model"`` plus
+    optional ``"callbacks"`` (passed to the pipeline constructor, so they see
+    ``POST_LOAD``) and ``"train_hook_handlers"``. ``run_suffix`` is appended to
+    both the run name and the checkpoint directory.
+
     Hook timing (relative to ``accelerator.end_training()``):
         ``pre_dist_teardown``: every rank, after ``pipeline.train()`` while the
             process group is still alive (optional second training, shared reporter).
@@ -65,5 +70,5 @@ class ExperimentSpec:
     get_optimizer: GetOptimizerFn | None = None
     pre_dist_teardown: Callable[[MaterializedRun], None] | None = None
     post_dist_teardown: Callable[[MaterializedRun], None] | None = None
-    save_dir_suffix: str = ""
+    run_suffix: str = ""
     disable_train_hooks: bool = True

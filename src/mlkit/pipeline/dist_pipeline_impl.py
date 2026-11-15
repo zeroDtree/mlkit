@@ -18,6 +18,26 @@ from .distributed_pipeline import (
 )
 
 
+def _scalar_metrics(metrics: dict[str, Any]) -> dict[str, float]:
+    """Keep the numeric scalars of one metric payload as Python floats."""
+    scalars: dict[str, float] = {}
+    for key, value in metrics.items():
+        if isinstance(value, torch.Tensor) and value.numel() == 1:
+            value = value.item()
+        if isinstance(value, (int, float)):
+            scalars[key] = float(value)
+    return scalars
+
+
+def _mean_metrics(samples: list[dict[str, float]]) -> dict[str, float]:
+    """Average each metric over the samples that report it."""
+    values: dict[str, list[float]] = {}
+    for sample in samples:
+        for key, value in sample.items():
+            values.setdefault(key, []).append(value)
+    return {key: sum(vs) / len(vs) for key, vs in values.items()}
+
+
 @inherit_docstrings
 class MyTrainingConfig(DistributedTrainingConfig):
     def __init__(
@@ -174,23 +194,31 @@ class MyDistributedPipeline(DistributedPipeline):
     def eval_a_step(self, batch: dict) -> dict:
         """Evaluate the model for one step
 
+        ``POST_EVAL_STEP`` callbacks see ``result["model_output"]``. The
+        returned result keeps only ``eval_loss`` and the model's ``metrics``.
+
         Args:
             batch: the batch of data
 
         Returns:
-            dict: a dictionary containing the evaluation loss
+            dict: ``eval_loss`` plus ``metrics`` when the model reports them
         """
         self.trigger_callbacks(event=CallbackEvent.PRE_EVAL_STEP, batch=batch)
         out = self.compute_loss(self.model, batch, phase="eval")
+        model_output = out.get("model_output")
         result: dict[str, Any] = {"eval_loss": out["loss"].item()}
-        if out.get("model_output") is not None:
-            result["model_output"] = out["model_output"]
+        if model_output is not None:
+            result["model_output"] = model_output
         self.trigger_callbacks(
             event=CallbackEvent.POST_EVAL_STEP,
             batch=batch,
             result=result,
             loss=result["eval_loss"],
         )
+        result.pop("model_output", None)
+        metrics = model_output.get("metrics") if model_output is not None else None
+        if isinstance(metrics, dict):
+            result["metrics"] = metrics
         return result
 
     @override
@@ -245,6 +273,7 @@ class MyDistributedPipeline(DistributedPipeline):
         self.model.eval()
         eval_results = []
         gathered_losses = []
+        gathered_metrics: list[dict[str, float]] = []
         for batch in self.eval_dataloader:
             if disable_grad:
                 with torch.no_grad():
@@ -258,6 +287,8 @@ class MyDistributedPipeline(DistributedPipeline):
             batch_size = next(v.shape[0] for v in batch.values() if isinstance(v, torch.Tensor))
             loss_tensor = torch.tensor(result["eval_loss"], device=self.accelerator.device).repeat(batch_size)
             gathered_losses.append(self.accelerator.gather_for_metrics(loss_tensor))
+            sample_metrics = [_scalar_metrics(result.get("metrics", {}))] * batch_size
+            gathered_metrics.extend(self.accelerator.gather_for_metrics(sample_metrics, use_gather_object=True))
 
         if len(gathered_losses) == 0:
             result = {
@@ -274,6 +305,7 @@ class MyDistributedPipeline(DistributedPipeline):
                 "min_eval_loss": all_losses.min().item(),
                 "std_eval_loss": all_losses.std().item() if all_losses.numel() > 1 else 0.0,
             }
+        result.update({f"eval/{key}": value for key, value in _mean_metrics(gathered_metrics).items()})
         self.log(result, step=self.training_state.current_global_step)
         self._sync_halt()
 

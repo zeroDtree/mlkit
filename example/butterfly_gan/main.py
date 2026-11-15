@@ -79,7 +79,7 @@ def main(cfg: DictConfig):
         get_collate=get_collate_fn,
         get_optimizer=_get_optimizer,
         post_dist_teardown=post_dist_teardown,
-        save_dir_suffix=f"-latent:{cfg.gan.latent_dim}",
+        run_suffix=f"-latent:{cfg.gan.latent_dim}",
     )
     run_experiment(cfg, spec)
 

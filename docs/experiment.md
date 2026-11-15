@@ -47,11 +47,11 @@ Task-specific blocks (`gm`, `vae`, `dataset`, …) are read only by your `get_mo
 
 | Field | Required | Purpose |
 | --- | --- | --- |
-| `get_model` | yes | `(cfg, **kwargs) -> model` or a bundle dict with `"model"` and optional `"train_hook_handlers"` |
+| `get_model` | yes | `(cfg, **kwargs) -> model` or a bundle dict with `"model"` and optional `"callbacks"` and `"train_hook_handlers"` |
 | `get_dataset` | yes | `(cfg) -> (train, val, test)` |
 | `get_collate` | yes | `(cfg) -> collate_fn` |
 | `get_optimizer` | no | Defaults to `get_optimizer` from `utils_for_main` |
-| `save_dir_suffix` | no | Appended to `train.save_dir` (e.g. sweep suffix) |
+| `run_suffix` | no | Appended to both the run name and the checkpoint directory (e.g. sweep suffix) |
 | `disable_train_hooks` | no | Default `True`; disables handlers in `train_hook_handlers` |
 | `pre_dist_teardown` | no | See [Pre-distributed teardown](#pre-distributed-teardown) |
 | `post_dist_teardown` | no | See [Post-distributed teardown](#post-distributed-teardown) |
@@ -70,6 +70,8 @@ SPEC = ExperimentSpec(
 def main(cfg: DictConfig):
     run_experiment(cfg, SPEC)
 ```
+
+Bundle `"callbacks"` go to the pipeline constructor, ahead of the reporter callback. They are registered before the checkpoint load, so they also see `POST_LOAD` on resume. The pipeline is seeded with `train.seed`. Each main-process run writes its text log to `log.log_dir/<timestamp>_<pid>/log.txt`.
 
 ## MaterializedRun
 

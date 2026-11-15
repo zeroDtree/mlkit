@@ -7,6 +7,7 @@ Run with:
 from __future__ import annotations
 
 import logging
+import os
 from collections.abc import Callable
 from typing import Any, cast
 from unittest.mock import MagicMock
@@ -72,6 +73,7 @@ def _install(
     train_error: BaseException | None = None,
     on_train: Callable[[], None] | None = None,
     configs: list[Any] | None = None,
+    pipelines: list[dict[str, Any]] | None = None,
     halt: bool = False,
 ) -> MagicMock:
     accelerator = MagicMock()
@@ -86,11 +88,9 @@ def _install(
 
     class Pipeline:
         def __init__(self, **kwargs: Any) -> None:
-            del kwargs
+            if pipelines is not None:
+                pipelines.append(kwargs)
             self._halt = False
-
-        def add_callbacks(self, callbacks: object) -> None:
-            del callbacks
 
         def train(self) -> None:
             events.append("train")
@@ -123,12 +123,14 @@ def _run(
     *,
     post_dist_teardown: Callable | None = None,
     pre_dist_teardown: Callable | None = None,
+    bundle: dict[str, Any] | None = None,
+    run_suffix: str = "",
 ) -> None:
     model = torch.nn.Linear(1, 1)
 
     def get_model(cfg: DictConfig, **kwargs: Any):
         del cfg, kwargs
-        return model
+        return {"model": model, **(bundle or {})}
 
     def get_dataset(cfg: DictConfig):
         del cfg
@@ -144,8 +146,69 @@ def _run(
         get_collate=get_collate,
         post_dist_teardown=post_dist_teardown,
         pre_dist_teardown=pre_dist_teardown,
+        run_suffix=run_suffix,
     )
     run_experiment(_cfg(), spec)
+
+
+class _ReporterStub:
+    def __init__(self, callback: object) -> None:
+        self.callback = callback
+
+    def store_config(self, config: object) -> None:
+        del config
+
+    def as_callback(self) -> object:
+        return self.callback
+
+
+def _install_reporter(monkeypatch: pytest.MonkeyPatch, callback: object, run_names: list[str]) -> None:
+    class _Scope:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            del args
+            run_names.append(cast(str, kwargs["run_name"]))
+
+        def __enter__(self) -> _ReporterStub:
+            return _ReporterStub(callback)
+
+        def __exit__(self, *args: object) -> None:
+            del args
+
+    monkeypatch.setattr("mlkit.util.report.ReporterContext", _Scope)
+
+
+def test_bundle_callbacks_and_seed_reach_the_pipeline_constructor(monkeypatch: pytest.MonkeyPatch):
+    events: list[str] = []
+    pipelines: list[dict[str, Any]] = []
+    _install(monkeypatch, events, is_main=True, pipelines=pipelines)
+    bundle_callback, reporter_callback = object(), object()
+    _install_reporter(monkeypatch, reporter_callback, [])
+
+    _run(events, bundle={"callbacks": [bundle_callback]})
+
+    assert pipelines[0]["callbacks"] == [bundle_callback, reporter_callback]
+    assert pipelines[0]["seed"] == 0
+
+
+def test_run_suffix_names_the_run_and_the_checkpoint_dir(monkeypatch: pytest.MonkeyPatch):
+    events: list[str] = []
+    configs: list[Any] = []
+    run_names: list[str] = []
+    log_dirs: list[tuple[str, dict[str, Any]]] = []
+    _install(monkeypatch, events, is_main=True, configs=configs)
+    _install_reporter(monkeypatch, object(), run_names)
+
+    def create_log_dir(root: str, **kwargs: Any) -> str:
+        log_dirs.append((root, kwargs))
+        return "logs"
+
+    monkeypatch.setattr("mlkit.util.log.get_and_create_new_log_dir", create_log_dir)
+
+    _run(events, run_suffix="-sweep:1")
+
+    assert run_names == ["toy-toy-lr:0.01-n_steps:1-sweep:1"]
+    assert [config.save_dir for config in configs] == ["checkpoints/toy/toy/-lr:0.01-bs:2-sweep:1"]
+    assert log_dirs == [("logs", {"suffix": str(os.getpid())})]
 
 
 def test_every_rank_uses_the_same_checkpoint_dir(monkeypatch: pytest.MonkeyPatch):

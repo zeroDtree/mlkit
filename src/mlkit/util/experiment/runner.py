@@ -15,6 +15,7 @@ from .types import ExperimentSpec, MaterializedRun
 def run_experiment(cfg: DictConfig, spec: ExperimentSpec) -> None:
     """Run a complete train cycle with optional pre/post distributed teardown hooks."""
 
+    import os
     from contextlib import ExitStack
 
     from accelerate import Accelerator
@@ -71,11 +72,14 @@ def run_experiment(cfg: DictConfig, spec: ExperimentSpec) -> None:
         log_config = LogConfig(**cfg.log)
         PipelineClass, TrainingConfigClass = get_train_class()
         training_config = TrainingConfigClass(**cfg.train)
-        training_config.save_dir = get_new_save_dir(training_config.save_dir, cfg, suffix=spec.save_dir_suffix)
+        training_config.save_dir = get_new_save_dir(training_config.save_dir, cfg, suffix=spec.run_suffix)
 
         print(training_config.__dict__)
 
         collate_fn = spec.get_collate(cfg)
+        callbacks = list(model_bundle.get("callbacks", []))
+        if reporter is not None:
+            callbacks.append(reporter.as_callback())
         pipeline = PipelineClass(
             model=model,
             train_dataset=train_set,
@@ -85,9 +89,9 @@ def run_experiment(cfg: DictConfig, spec: ExperimentSpec) -> None:
             log_config=log_config,
             collate_fn=collate_fn,
             logger=logger,
+            seed=cfg.train.seed,
+            callbacks=callbacks,
         )
-        if reporter is not None:
-            pipeline.add_callbacks([reporter.as_callback()])
         return MaterializedRun(
             cfg=cfg,
             accelerator=accelerator,
@@ -137,16 +141,16 @@ def run_experiment(cfg: DictConfig, spec: ExperimentSpec) -> None:
         local_open_error: BaseException | None = None
         if accelerator.is_main_process:
             try:
-                log_dir = get_and_create_new_log_dir(cfg.log.log_dir)
+                log_dir = get_and_create_new_log_dir(cfg.log.log_dir, suffix=str(os.getpid()))
                 logger = get_logger(name="experiment", log_dir=log_dir)
                 logger.info(f"accelerator.device = {accelerator.device}")
                 logger.info(f"seed = {cfg.train.seed}")
-                run_name = get_run_name(cfg)
+                run_name = get_run_name(cfg, suffix=spec.run_suffix)
                 logger.info("Config:\n" + OmegaConf.to_yaml(cfg))
                 resolved_config = cast(dict[str, Any], OmegaConf.to_container(cfg, resolve=True))
                 reporter_kind = str(cfg.reporter).strip().lower()
                 checkpoint_dir = latest_checkpoint_dir(
-                    get_new_save_dir(cfg.train.save_dir, cfg, suffix=spec.save_dir_suffix)
+                    get_new_save_dir(cfg.train.save_dir, cfg, suffix=spec.run_suffix)
                 )
                 reporter_context = ReporterContext(
                     reporter_kind,
