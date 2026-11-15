@@ -2,17 +2,23 @@ site_name: mlkit
 
 nav:
   - Home: index.md
-  - Learning rate: learning-rate.md
+  - Guides:
+      - Running an experiment: experiment.md
+      - Experiment tracking: reporter.md
+      - Training loop: training.md
+      - Learning rate: learning-rate.md
   - API Reference:
-    - Overview: api/index.md
-    - diffusion: api/diffusion.md
-    - flow_matching: api/flow_matching.md
-    - pipeline: api/pipeline.md
-    - model: api/model.md
-    - dataset: api/dataset.md
-    - optimizer: api/optimizer.md
-    - scheduler: api/scheduler.md
-    - util: api/util.md
+      - Overview: api/index.md
+      - diffusion: api/diffusion.md
+      - flow_matching: api/flow_matching.md
+      - pipeline: api/pipeline.md
+      - model: api/model.md
+      - dataset: api/dataset.md
+      - optimizer: api/optimizer.md
+      - scheduler: api/scheduler.md
+      - experiment: api/experiment.md
+      - report: api/report.md
+      - util: api/util.md
 
 markdown_extensions:
   - toc:
@@ -23,10 +29,20 @@ markdown_extensions:
   - pymdownx.arithmatex:
       generic: true
   - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_div_format
+
+extra_css:
+  - stylesheets/extra.css
 
 extra_javascript:
   - javascripts/mathjax.js
   - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
+  - path: javascripts/mermaid.mjs
+    type: module
 
 theme:
   name: material

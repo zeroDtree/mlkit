@@ -8,6 +8,17 @@
 import mlkit
 ```
 
-## Navigation
+Hydra examples use `run_experiment` with an `ExperimentSpec`; see the guides below before diving into the API.
 
-- [API Reference](api/index.md) — Auto-generated full API documentation
+## Guides
+
+Recommended reading order:
+
+1. [Running an experiment](experiment.md) — Hydra config, `ExperimentSpec`, `run_experiment`, artifacts paths
+2. [Experiment tracking](reporter.md) — MLflow, WandB, resume via `report_run.json`
+3. [Training loop](training.md) — epochs vs steps, checkpoints, callbacks, halt
+4. [Learning rate](learning-rate.md) — scheduler length under Accelerate
+
+## API Reference
+
+- [API Reference](api/index.md) — Auto-generated module documentation (`experiment` and `report` have dedicated pages)
