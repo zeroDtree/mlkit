@@ -6,7 +6,7 @@ from typing import Any, cast
 
 import pytest
 
-from mlkit.util.report import MLflowReporter, ReporterContext, get_reporter
+from mlkit.util.report import ReporterContext, get_reporter
 
 
 class _FakeMlflow:

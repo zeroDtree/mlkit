@@ -215,9 +215,7 @@ class SO3Diffuser(LieGroupDiffuser):
         )
         return ground_truth_score
 
-    def compute_loss(
-        self, batch: dict[str, Any], *_args: Any, **_kwargs: Any
-    ) -> dict:  # ty: ignore[invalid-method-override]
+    def compute_loss(self, batch: dict[str, Any], *_args: Any, **_kwargs: Any) -> dict:  # ty: ignore[invalid-method-override]
         x_0 = batch["x_0"]
         padding_mask = batch["padding_mask"]
         macro_shape = self.get_macro_shape(x_0)

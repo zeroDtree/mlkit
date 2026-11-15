@@ -472,10 +472,7 @@ class ResumableSaver:
 
 def build_sample_id(*parts: str | int, config_hash: str | None = None) -> str:
     """Build a stable filesystem-safe sample identifier from key parts."""
-    safe_parts = [
-        str(part).replace("/", "_").replace("\\", "_").replace("::", "__")
-        for part in parts
-    ]
+    safe_parts = [str(part).replace("/", "_").replace("\\", "_").replace("::", "__") for part in parts]
     normalized = "::".join(safe_parts)
     if config_hash is not None:
         safe_hash = str(config_hash).replace("/", "_").replace("\\", "_").replace("::", "__")

@@ -3,7 +3,7 @@ from typing import Any, cast
 
 from mlkit.pipeline.callback import BaseCallback, CallbackEvent
 
-from .base import Reporter, NullReporter
+from .base import NullReporter, Reporter
 from .run_file import write_report_run
 
 

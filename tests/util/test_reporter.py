@@ -27,7 +27,7 @@ def test_get_reporter_rejects_unknown_kind():
 
 def test_report_callback_needs_a_reporter():
     with pytest.raises(TypeError):
-        ReportCallback()
+        ReportCallback()  # ty: ignore[missing-argument]
 
 
 class _FakeMlflow:

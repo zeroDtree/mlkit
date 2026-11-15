@@ -19,11 +19,7 @@ EXPECTED = {
 
 
 def test_example_artifact_paths_stay_under_the_launch_directory():
-    config_paths = sorted(
-        path
-        for path in (REPO_ROOT / "example").rglob("*.yaml")
-        if "artifacts" not in path.parts
-    )
+    config_paths = sorted(path for path in (REPO_ROOT / "example").rglob("*.yaml") if "artifacts" not in path.parts)
     assert config_paths, "expected example configs"
 
     for config_path in config_paths:

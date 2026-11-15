@@ -123,7 +123,7 @@ class LossGuidanceConditioner(Conditioner):
         r"""Get guidance vector g(x_t) = -∇_{x_t} l(posterior_mean_fn(x_t), y)
 
         When ``p_gt_data`` is provided and already connected to ``x_t``, reuse that
-        tensor (training cache path). ``retain_graph=True`` so the later 
+        tensor (training cache path). ``retain_graph=True`` so the later
         backward can still use the shared denoiser graph. Otherwise clone ``x_t``
         and call ``posterior_mean_fn`` (sampling / fallback).
 
@@ -164,11 +164,7 @@ class LossGuidanceConditioner(Conditioner):
         **kwargs: Any,
     ) -> tuple[Tensor, Tensor]:
         """Return conditional loss and ∇_{x_t}, reusing ``cached_p_gt_data`` when possible."""
-        use_cache = (
-            cached_p_gt_data is not None
-            and x_t.requires_grad
-            and cached_p_gt_data.grad_fn is not None
-        )
+        use_cache = cached_p_gt_data is not None and x_t.requires_grad and cached_p_gt_data.grad_fn is not None
         if use_cache:
             assert cached_p_gt_data is not None
             conditional_loss = self.compute_conditional_loss(cached_p_gt_data, padding_mask)

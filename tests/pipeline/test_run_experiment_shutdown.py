@@ -126,8 +126,8 @@ def _run(
 ) -> None:
     model = torch.nn.Linear(1, 1)
 
-    def get_model(cfg: DictConfig):
-        del cfg
+    def get_model(cfg: DictConfig, **kwargs: Any):
+        del cfg, kwargs
         return model
 
     def get_dataset(cfg: DictConfig):
