@@ -67,7 +67,7 @@ flash-attn = [{ requirement = "torch", match-runtime = true }]
 flash-attn = { FLASH_ATTENTION_SKIP_CUDA_BUILD = "TRUE" }
 
 [project.urls]
-Homepage = "https://github.com/zeroDtree/my_pkg_py"
+Homepage = "https://github.com/zeroDtree/mlkit"
 
 [tool.uv]
 package = true

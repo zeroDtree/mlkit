@@ -10,13 +10,13 @@ A Python machine learning toolkit. Requires Python ≥ 3.12.
 ### uv (recommended)
 
 ```bash
-uv add git+https://github.com/zeroDtree/my_pkg_py
+uv add git+https://github.com/zeroDtree/mlkit
 ```
 
 **With optional dependencies:**
 
 ```bash
-uv add "git+https://github.com/zeroDtree/my_pkg_py[hard]"
+uv add "git+https://github.com/zeroDtree/mlkit[hard]"
 ```
 
 - `hard`: flash-attn, bitsandbytes (CUDA / quantization)
@@ -27,16 +27,16 @@ uv add "git+https://github.com/zeroDtree/my_pkg_py[hard]"
 **Editable (local clone):**
 
 ```bash
-git clone git@github.com:zeroDtree/my_pkg_py.git
-uv add --editable my_pkg_py
+git clone git@github.com:zeroDtree/mlkit.git
+uv add --editable mlkit
 ```
 
 **pip:**
 
 ```bash
-pip install "mlkit @ git+https://github.com/zeroDtree/my_pkg_py.git"
+pip install "mlkit @ git+https://github.com/zeroDtree/mlkit.git"
 # with optional deps:
-pip install "mlkit[hard] @ git+https://github.com/zeroDtree/my_pkg_py.git"
+pip install "mlkit[hard] @ git+https://github.com/zeroDtree/mlkit.git"
 ```
 
 </details>
@@ -44,8 +44,8 @@ pip install "mlkit[hard] @ git+https://github.com/zeroDtree/my_pkg_py.git"
 ## Examples
 
 ```bash
-git clone https://github.com/zeroDtree/my_pkg_py.git
-cd my_pkg_py
+git clone https://github.com/zeroDtree/mlkit.git
+cd mlkit
 ```
 
 See the [`example/`](example/) directory for usage by task.

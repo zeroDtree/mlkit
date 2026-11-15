@@ -117,7 +117,7 @@ uv run python example/butterfly_edm/main.py
 bash scripts/mc-run-python.sh example/butterfly_edm/main.py
 ```
 
-See [scripts/README.md](https://github.com/zeroDtree/my_pkg_py/blob/main/scripts/README.md) for GPU launchers and environment variables.
+See [scripts/README.md](https://github.com/zeroDtree/mlkit/blob/main/scripts/README.md) for GPU launchers and environment variables.
 
 ## See also
 
