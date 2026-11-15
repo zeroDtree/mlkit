@@ -179,3 +179,5 @@ multirun/
 .claude/
 .cursor/
 .github/instructions
+
+artifacts/
