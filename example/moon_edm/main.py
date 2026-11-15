@@ -5,14 +5,13 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import hydra
 from omegaconf import DictConfig
-from mlkit.util.experiment import ExperimentSpec, run_experiment
 from utils import get_collate_fn, get_dataset, get_model
+
+from mlkit.util.experiment import ExperimentSpec, run_experiment
 
 
 def post_dist_teardown(ctx):
-    cfg = ctx.cfg
     model_bundle = ctx.model_bundle
-    pipeline = ctx.pipeline
     accelerator = ctx.accelerator
     del ctx.train_set
     import matplotlib.pyplot as plt

@@ -6,10 +6,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import hydra
 from omegaconf import DictConfig
 from shared.model import build_ttur_optimizer
-from mlkit.util.experiment import ExperimentSpec, run_experiment
 from utils import get_collate_fn, get_dataset, get_model
 
 from mlkit.generative_model.gan import GAN
+from mlkit.util.experiment import ExperimentSpec, run_experiment
 from mlkit.util.huggingface import HF_MIRROR  # noqa: F401
 
 
@@ -30,8 +30,8 @@ def _to_pil_grid(images, rows: int = 4, cols: int = 4):
 def post_dist_teardown(ctx):
     cfg = ctx.cfg
     model_bundle = ctx.model_bundle
-    pipeline = ctx.pipeline
     accelerator = ctx.accelerator
+    train_set = ctx.train_set
     del ctx.train_set
     import torch
 

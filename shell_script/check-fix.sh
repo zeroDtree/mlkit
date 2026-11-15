@@ -6,7 +6,7 @@
 # Usage:
 #   bash shell_script/check-fix.sh
 #
-# Runs ruff with --fix, formats with ruff, verifies ruff is clean, then ty.
+# Runs ruff with --fix (src/mlkit, tests, example per ruff.toml), format, verify, then ty.
 #
 # Env: MC_ENABLE_PROXY — set to 1 before this script to enable the HTTP proxy.
 # @help-end
