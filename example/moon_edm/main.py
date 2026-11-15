@@ -1,3 +1,5 @@
+"""Hydra training example using :func:`run_experiment`; see ``docs/experiment.md``."""
+
 import os
 import sys
 

@@ -1,7 +1,7 @@
 """Regression test for mid-step checkpoint resume off-by-one.
 
 Run with:
-    uv run python tests/pipeline/test_resume_off_by_one.py
+    uv run pytest tests/pipeline/test_resume_off_by_one.py
 """
 
 from __future__ import annotations

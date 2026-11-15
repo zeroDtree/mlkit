@@ -16,8 +16,8 @@ class DeviceConfig(object):
         """Move the config to the given device
 
         Args:
-            device (torch.device | str | Tensor): the device to move the config to
-            inplace (bool, optional): whether to move the config in place. Defaults to True.
+            device: the device to move the config to
+            inplace: whether to move the config in place. Defaults to True.
 
         Returns:
             BaseConfig: the config moved to the given device

@@ -46,29 +46,10 @@ class MyTrainingConfig(DistributedTrainingConfig):
         *_args,
         **kwargs,
     ):
-        """Initialize the MyTrainingConfig
+        """Hydra-facing training config with epoch or step strategy and ``n_steps``.
 
-        Args:
-            train_strategy (Literal[&quot;epochs&quot;, &quot;steps&quot;], optional): the strategy determines whether to train the model for a fixed number of epochs or for a fixed number of steps. Defaults to "epochs".
-            n_epochs (int, optional): the number of epochs. Defaults to 100.
-            batch_size (int, optional): the batch size. Defaults to 16.
-            device (str, optional): the device to use for training. Defaults to "cuda".
-            save_strategy (Literal[&quot;epochs&quot;, &quot;steps&quot;, None], optional): the strategy determines whether to save the model and when to save it. Defaults to "epochs".
-            save_dir (str | None, optional): the directory to save the model. Defaults to None.
-            save_steps (int, optional): the number of steps to save the model. Defaults to 10.
-            save_epochs (int, optional): the number of epochs to save the model. Defaults to 1.
-            save_total_limit (int, optional): the maximum number of checkpoints to save. Defaults to 5.
-            num_workers (int, optional): the number of workers to use for data loading. Defaults to 4.
-            train_shuffle (bool, optional): whether to shuffle the training data. Defaults to True.
-            eval_strategy (Literal[&quot;epochs&quot;, &quot;steps&quot;] | None, optional): the strategy determines whether to evaluate the model and when to evaluate it. Defaults to None.
-            eval_steps (int, optional): the number of steps to evaluate the model. Defaults to 500.
-            eval_epochs (int, optional): the number of epochs to evaluate the model. Defaults to 1.
-            n_steps (int | None, optional): the number of steps to train the model. Defaults to None.
-            grad_clip_strategy (Literal[&quot;norm&quot;, &quot;value&quot;, None], optional): the strategy determines whether to clip the gradient and how to clip it. Defaults to "norm".
-            max_grad_norm (float, optional): the maximum gradient norm to clip the gradient. Defaults to 1.0.
-            max_grad_value (float, optional): the maximum gradient value to clip the gradient. Defaults to 1.0.
-            gradient_accumulation_steps (int, optional): the number of steps to accumulate gradients before updating the model. Defaults to 1.
-            mixed_precision (str, optional): the mixed precision to use for training. Defaults to "fp16".
+        When ``real_batch_size`` is passed in ``kwargs``, gradient accumulation is
+        recomputed from the live process count.
         """
         self.train_strategy = train_strategy
         real_batch_size = kwargs.get("real_batch_size", None)
@@ -107,8 +88,8 @@ class MyTrainingConfig(DistributedTrainingConfig):
         """Get the gradient accumulation steps
 
         Args:
-            real_batch_size (int): the real batch size
-            per_device_batch_size (int): the batch size per device
+            real_batch_size: the real batch size
+            per_device_batch_size: the batch size per device
 
         Returns:
             int: the gradient accumulation steps
@@ -194,7 +175,7 @@ class MyDistributedPipeline(DistributedPipeline):
         """Evaluate the model for one step
 
         Args:
-            batch (dict): the batch of data
+            batch: the batch of data
 
         Returns:
             dict: a dictionary containing the evaluation loss

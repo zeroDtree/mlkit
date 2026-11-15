@@ -35,20 +35,17 @@ class EuclideanDDIMConfig(EuclideanDDPMConfig):
         """Initialize the EuclideanDDIMConfig
 
         Args:
-            n_discretization_steps (int): the number of discretization steps
-            ndim_micro_shape (int): the number of dimensions of the micro shape
-            use_probability_flow (bool): whether to use probability flow
-            use_clip (bool): whether to use clip
-            clip_sample_range (float): the range of the clip
-            use_dyn_thresholding (bool): whether to use dynamic thresholding
-            dynamic_thresholding_ratio (float): the ratio of the dynamic thresholding
-            sample_max_value (float): the maximum value of the sample used in thresholding
-            betas (Tensor): the betas
-            n_inference_steps (int): the number of inference steps
-            eta (float): the eta
-
-        Returns:
-            None
+            n_discretization_steps: the number of discretization steps
+            ndim_micro_shape: the number of dimensions of the micro shape
+            use_probability_flow: whether to use probability flow
+            use_clip: whether to use clip
+            clip_sample_range: the range of the clip
+            use_dyn_thresholding: whether to use dynamic thresholding
+            dynamic_thresholding_ratio: the ratio of the dynamic thresholding
+            sample_max_value: the maximum value of the sample used in thresholding
+            betas: the betas
+            n_inference_steps: the number of inference steps
+            eta: the eta
         """
         super().__init__(
             n_discretization_steps=n_discretization_steps,
@@ -91,8 +88,8 @@ class EuclideanDDIMDiffuser(EuclideanDDPMDiffuser):
         $$
 
         Args:
-            t (Tensor): timestep
-            prev_t (Tensor): previous timestep
+            t: timestep
+            prev_t: previous timestep
 
         Returns:
             Tensor: $\sigma^2$
@@ -130,9 +127,9 @@ class EuclideanDDIMDiffuser(EuclideanDDPMDiffuser):
         $$
 
         Args:
-            x_t (Tensor): the sample at timestep t
-            t (Tensor): the timestep
-            padding_mask (Tensor): the padding mask
+            x_t: the sample at timestep t
+            t: the timestep
+            padding_mask: the padding mask
 
         Returns:
             dict:

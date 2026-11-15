@@ -20,10 +20,10 @@ class SDE(abc.ABC):
         r"""Initialize the SDE
 
         Args:
-            ndim_micro_shape (`int`, *optional*): number of dimensions of a sample.
+            ndim_micro_shape: number of dimensions of a sample.
             e.g. for image with shape `[b, c, h, w]`, ndim_micro_shape = 3
             e.g. for protein with shape `[b, n_res, 3]`, ndim_micro_shape = 2
-            n_discretization_steps (`int`, *optional*): number of discretization steps.
+            n_discretization_steps: number of discretization steps.
         """
         super().__init__()
         self.ndim_micro_shape = ndim_micro_shape
@@ -39,7 +39,7 @@ class SDE(abc.ABC):
         r"""Sample from the prior distribution.
 
         Args:
-            shape (Tuple): the shape of the sample.
+            shape: the shape of the sample.
 
         Returns:
             Tensor: a sample from the prior distribution.
@@ -50,9 +50,9 @@ class SDE(abc.ABC):
         r"""Get the drift and diffusion of the SDE.
 
         Args:
-            x (Tensor): the sample.
-            t (Tensor): the time step.
-            mask (`Tensor`, *optional*): the mask of the sample. Defaults to None.
+            x: the sample.
+            t: the time step.
+            mask: the mask of the sample. Defaults to None.
 
         Returns:
             Tuple[Tensor, Tensor]: the drift and diffusion of the SDE.

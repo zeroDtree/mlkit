@@ -7,6 +7,7 @@ nav:
       - Experiment tracking: reporter.md
       - Training loop: training.md
       - Learning rate: learning-rate.md
+      - Docstring style: docstrings.md
   - API Reference:
       - Overview: api/index.md
       - diffusion: api/diffusion.md

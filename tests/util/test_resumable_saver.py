@@ -1,4 +1,8 @@
-"""Tests for the state-machine-backed resumable saver."""
+"""Tests for the state-machine-backed resumable saver.
+
+Run with:
+    uv run pytest tests/util/test_resumable_saver.py
+"""
 
 from __future__ import annotations
 

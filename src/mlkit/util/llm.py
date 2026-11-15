@@ -8,12 +8,11 @@ def get_data_collator(tokenizer, max_length=-1, ignore_masked_token=True, model_
     Shifting the inputs and labels to align them happens inside the model,
     so the data collator just copies the inputs to create the labels.
 
-
     Args:
-        tokenizer (Tokenizer): the tokenizer to use
-        max_length (int, optional): the maximum length of the input text. Defaults to -1.
-        ignore_masked_token (bool, optional): whether to ignore the masked tokens. Defaults to True.
-        model_type (str, optional): the type of the model. Defaults to "causal".
+        tokenizer: the tokenizer to use
+        max_length: the maximum length of the input text. Defaults to -1.
+        ignore_masked_token: whether to ignore the masked tokens. Defaults to True.
+        model_type: the type of the model. Defaults to "causal".
 
     Returns:
         callable: the data collator
@@ -124,7 +123,7 @@ def compute_metrics(eval_prediction: EvalPrediction):
     """Compute the metrics for a model
 
     Args:
-        eval_prediction (EvalPrediction): the evaluation prediction
+        eval_prediction: the evaluation prediction
 
     Returns:
         dict: the metrics
@@ -157,8 +156,8 @@ def preprocess_logits_for_metrics(logits, labels):
     """Preprocess the logits for metrics
 
     Args:
-        logits (torch.Tensor): the logits
-        labels (torch.Tensor): the ground truth labels
+        logits: the logits
+        labels: the ground truth labels
 
     Returns:
         tuple: the prediction ids and the ground truth labels
@@ -175,8 +174,8 @@ def add_maybe_special_tokens(model, tokenizer):
     """Add maybe special tokens to the tokenizer and model, resize the model's token embeddings if needed
 
     Args:
-        model (torch.nn.Module): the model to add the special tokens
-        tokenizer (Tokenizer): the tokenizer to add the special tokens
+        model: the model to add the special tokens
+        tokenizer: the tokenizer to add the special tokens
 
     Returns:
         tuple: the model and the tokenizer

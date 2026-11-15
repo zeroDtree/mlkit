@@ -26,9 +26,9 @@ class Conditioner(_GMConditioner):
         r"""Get conditional score
 
         Args:
-            x_t (Tensor): the input tensor
-            t (Tensor): the time tensor
-            padding_mask (Tensor): the padding mask
+            x_t: the input tensor
+            t: the time tensor
+            padding_mask: the padding mask
 
         Returns:
             Tensor: the conditional score

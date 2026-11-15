@@ -1,4 +1,8 @@
-"""Pipeline.log writes one text line and remembers the first callback failure."""
+"""Pipeline.log writes one text line and remembers the first callback failure.
+
+Run with:
+    uv run pytest tests/pipeline/test_pipeline_log.py
+"""
 
 from __future__ import annotations
 

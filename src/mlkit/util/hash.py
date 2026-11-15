@@ -7,10 +7,10 @@ def save_hash_to_file(model, data=None, algorithm=None, filename="hash.txt"):
     """Save the hash of a model, data and algorithm to a file
 
     Args:
-        model (_type_): the model to save the hash
-        data (_type_, optional): the data to save the hash. Defaults to None.
-        algorithm (_type_, optional): the algorithm to save the hash. Defaults to None.
-        filename (str, optional): the name of the file to save the hash. Defaults to "hash.txt".
+        model: the model to save the hash
+        data: the data to save the hash. Defaults to None.
+        algorithm: the algorithm to save the hash. Defaults to None.
+        filename: the name of the file to save the hash. Defaults to "hash.txt".
     """
 
     def compute_hash(obj):

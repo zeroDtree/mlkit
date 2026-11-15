@@ -13,8 +13,8 @@ def cache_to_disk(root_datadir="cached_dataset", exclude_first_arg=False):
     """Cache the result of a function to disk
 
     Args:
-        root_datadir (str, optional): the root directory to save the cached data. Defaults to "cached_dataset".
-        exclude_first_arg (bool, optional): whether to exclude the first argument of the function when generating the cache filename. Defaults to False.
+        root_datadir: the root directory to save the cached data. Defaults to "cached_dataset".
+        exclude_first_arg: whether to exclude the first argument of the function when generating the cache filename. Defaults to False.
     """
 
     def decorator(func):
@@ -62,7 +62,7 @@ def timer(format="ms"):  # noqa: ARG001
     """Timer the execution time of a function
 
     Args:
-        format (str, optional): the format of the execution time. Defaults to "ms".
+        format: the format of the execution time. Defaults to "ms".
     """
 
     def decorator(func):
@@ -86,9 +86,9 @@ def register_class_to_dict(cls=None, *, key_name=None, global_dict: dict | None 
     """Register a class to a global dictionary
 
     Args:
-        cls (class, optional): the class to register. Defaults to None.
-        key_name (str, optional): the name of the key to register the class. Defaults to None.
-        global_dict (dict, optional): the global dictionary to register the class. Defaults to None.
+        cls: the class to register. Defaults to None.
+        key_name: the name of the key to register the class. Defaults to None.
+        global_dict: the global dictionary to register the class. Defaults to None.
 
     """
     if global_dict is None:

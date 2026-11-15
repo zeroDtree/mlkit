@@ -11,9 +11,9 @@ class FileManager:
         """Get all files in the directory_path that match the pattern
 
         Args:
-            directory_path (str): the path of the directory to sniff
-            pattern (str): the pattern to match
-            max_deep (`int`, *optional*): the maximum depth to sniff. Defaults to -1.
+            directory_path: the path of the directory to sniff
+            pattern: the pattern to match
+            max_deep: the maximum depth to sniff. Defaults to -1.
 
         Returns:
             list[str]: the full path of the files that match the pattern
@@ -31,9 +31,9 @@ class FileManager:
         """Get all files in the directory_path that match the pattern
 
         Args:
-            directory_path (str): the path of the directory to sniff
-            pattern (str): the pattern to match
-            max_deep (`int`, *optional*): the maximum depth to sniff. Defaults to -1.
+            directory_path: the path of the directory to sniff
+            pattern: the pattern to match
+            max_deep: the maximum depth to sniff. Defaults to -1.
 
         Returns:
             list[str]: the full path of the files that match the pattern

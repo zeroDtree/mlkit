@@ -13,7 +13,7 @@ def weight_norm_fn(module: Module):
     """Compute the weight norm of a module
 
     Args:
-        module (Module): the module to compute the weight norm
+        module: the module to compute the weight norm
 
     Returns:
         float: the weight norm of the module
@@ -32,7 +32,7 @@ def gradient_norm_fn(module: Module):
     """Compute the gradient norm of a module
 
     Args:
-        module (Module): the module to compute the gradient norm
+        module: the module to compute the gradient norm
 
     Returns:
         float: the gradient norm of the module
@@ -52,7 +52,7 @@ def weights_fn(module: Module) -> list[Tensor]:
     """Get the weights of a module
 
     Args:
-        module (Module): the module to get the weights
+        module: the module to get the weights
 
     Returns:
         list: the weights of the module
@@ -64,7 +64,7 @@ def gradients_fn(module: Module) -> list[Tensor]:
     """Get the gradients of a module
 
     Args:
-        module (Module): the module to get the gradients
+        module: the module to get the gradients
 
     Returns:
         list: the gradients of the module
@@ -91,14 +91,13 @@ class Observer(object):
     ):
         """Initialize the Observer
 
-
         Args:
-            model (Module, optional): the model to observe. Defaults to None.
-            optimizer (Optimizer, optional): the optimizer to observe. Defaults to None.
-            scheduler (LambdaLR, optional): the scheduler to observe. Defaults to None.
-            dataset (Dataset | HFDataset, optional): the dataset to observe. Defaults to None.
-            target_modules (List[str], optional): the modules to observe. Defaults to None. if target_modules is not None, then no_split_classes and strategy is ignored.
-            no_split_classes (List[str], optional): the classes to not split. Defaults to None.
+            model: the model to observe. Defaults to None.
+            optimizer: the optimizer to observe. Defaults to None.
+            scheduler: the scheduler to observe. Defaults to None.
+            dataset: the dataset to observe. Defaults to None.
+            target_modules: the modules to observe. Defaults to None. if target_modules is not None, then no_split_classes and strategy is ignored.
+            no_split_classes: the classes to not split. Defaults to None.
         """
         self.model = model
         self.optimizer = optimizer

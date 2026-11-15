@@ -41,27 +41,9 @@ class DistributedTrainingConfig(TrainingConfig):
         find_unused_parameters: bool = False,
         **kwargs,
     ):
-        """Initialize the DistributedTrainingConfig
+        """Accelerate-specific training settings (mixed precision, DDP flags).
 
-        Args:
-            n_epochs (int, optional): the number of epochs. Defaults to 100.
-            batch_size (int, optional): the batch size. Defaults to 4.
-            device (str, optional): the device to use for training. Defaults to "cuda".
-            save_strategy (Literal[&quot;epochs&quot;, &quot;steps&quot;, None], optional): the strategy determines whether to save the model and when to save it. Defaults to "epochs".
-            save_dir (str, optional): the directory to save the model. Defaults to None.
-            save_steps (int, optional): the number of steps to save the model. Defaults to 10.
-            save_epochs (int, optional): the number of epochs to save the model. Defaults to 1.
-            save_total_limit (int, optional): the maximum number of checkpoints to save. Defaults to 5.
-            num_workers (int, optional): the number of workers to use for data loading. Defaults to 4.
-            train_shuffle (bool, optional): whether to shuffle the training data. Defaults to True.
-            eval_strategy (Literal[&quot;epochs&quot;, &quot;steps&quot;], optional): the strategy determines whether to evaluate the model and when to evaluate it. Defaults to None.
-            eval_steps (int, optional): the number of steps to evaluate the model. Defaults to 500.
-            eval_epochs (int, optional): the number of epochs to evaluate the model. Defaults to 1.
-            grad_clip_strategy (Literal[&quot;norm&quot;, &quot;value&quot;, None], optional): the strategy determines whether to clip the gradient and how to clip it. Defaults to "norm".
-            max_grad_norm (float, optional): the maximum gradient norm to clip the gradient. Defaults to 1.0.
-            max_grad_value (float, optional): the maximum gradient value to clip the gradient. Defaults to 1.0.
-            gradient_accumulation_steps (int, optional): the number of steps to accumulate gradients before updating the model. Defaults to 1.
-            mixed_precision (str, optional): the mixed precision to use for training. Defaults to "fp16".
+        Shared schedule fields are documented on :class:`TrainingConfig`.
         """
 
         super().__init__(
@@ -103,17 +85,10 @@ class DistributedPipeline(BasePipeline):
         callbacks: Optional[List[BaseCallback]] = None,
         **kwargs,
     ):
-        """Initialize the DistributedPipeline
+        """Build an :class:`Accelerator`, prepare modules, and resume if configured.
 
         Args:
-            model (torch.nn.Module): the model to train
-            dataset (Union[torch.utils.data.Dataset, datasets.Dataset]): the dataset to train on
-            optimizers (Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR]): the optimizers to use for training
-            training_config (DistributedTrainingConfig): the training configuration
-            log_config (LogConfig): the logging configuration
-            logger (logging.Logger): the logger to use for logging
-            collate_fn (Optional[Callable], optional): the collate function to use for the dataset. Defaults to None.
-            seed (int, optional): the seed to use for the random number generator. Defaults to 42.
+            seed: RNG seed applied before ``Accelerator`` construction.
         """
         accelerate.utils.set_seed(seed)
         self.accelerator = Accelerator(
@@ -367,7 +342,7 @@ class DistributedPipeline(BasePipeline):
         """Trigger all callbacks for a given event
 
         Args:
-            event (CallbackEvent): the event to trigger
+            event: the event to trigger
             **kwargs: the keyword arguments to pass to the callback
         """
         super().trigger_callbacks(

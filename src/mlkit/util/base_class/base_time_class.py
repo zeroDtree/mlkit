@@ -77,11 +77,11 @@ class BaseTimeScheduler(ABC):
     - When `idx_start = 1`: $\text{idx} = i$, so $\text{idx} \in \{1, \ldots, N\}$
 
     Args:
-        continuous_time_start (`float`, *optional*): The start of continuous time range (typically 0). Defaults to 0.0.
-        continuous_time_end (`float`, *optional*): The end of continuous time range (i.e., $T$). Defaults to 1.0.
-        num_train_timesteps (`int`, *optional*): Number of diffusion steps $N$. Defaults to 1000.
-        num_inference_steps (`int`, *optional*): Number of inference steps. If None, uses `num_train_timesteps`. Defaults to None.
-        idx_start (`int`, *optional*): The starting value for timestep indices.
+        continuous_time_start: The start of continuous time range (typically 0). Defaults to 0.0.
+        continuous_time_end: The end of continuous time range (i.e., $T$). Defaults to 1.0.
+        num_train_timesteps: Number of diffusion steps $N$. Defaults to 1000.
+        num_inference_steps: Number of inference steps. If None, uses `num_train_timesteps`. Defaults to None.
+        idx_start: The starting value for timestep indices.
             Set to 1 if you prefer 1-based indexing where idx directly equals the discrete step i. Defaults to 0.
     """
 
@@ -138,7 +138,7 @@ class BaseTimeScheduler(ABC):
         The result is clamped to $[\text{idx\_start}, \text{idx\_start} + N - 1]$.
 
         Args:
-            continuous_time (Tensor): Continuous time values $t \in [t_0, t_0 + T]$.
+            continuous_time: Continuous time values $t \in [t_0, t_0 + T]$.
 
         Returns:
             Tensor: Timestep indices $\text{idx} \in \{\text{idx\_start}, \ldots, \text{idx\_start} + N - 1\}$.
@@ -165,7 +165,7 @@ class BaseTimeScheduler(ABC):
         $N$ is `num_train_timesteps`, and $\text{idx\_start}$ is the starting index.
 
         Args:
-            timestep_index (Tensor): Timestep indices $\text{idx} \in \{\text{idx\_start}, \ldots, \text{idx\_start} + N - 1\}$.
+            timestep_index: Timestep indices $\text{idx} \in \{\text{idx\_start}, \ldots, \text{idx\_start} + N - 1\}$.
 
         Returns:
             Tensor: Continuous time values $t \in [t_1, t_N]$.
@@ -219,7 +219,7 @@ class BaseTimeScheduler(ABC):
         r"""Set the timestep indices schedule for sampling/inference.
 
         Args:
-            timestep_indices (Tensor): 1D tensor of timestep indices $\text{idx} \in \{\text{idx\_start}, \ldots, \text{idx\_start} + N - 1\}$.
+            timestep_indices: 1D tensor of timestep indices $\text{idx} \in \{\text{idx\_start}, \ldots, \text{idx\_start} + N - 1\}$.
         """
         self._timesteps_idx = timestep_indices
 
@@ -227,7 +227,7 @@ class BaseTimeScheduler(ABC):
         r"""Set the interior continuous timesteps schedule.
 
         Args:
-            continuous_timesteps (Tensor): 1D tensor of interior knots in $[t_1, t_N]$.
+            continuous_timesteps: 1D tensor of interior knots in $[t_1, t_N]$.
         """
         self._continuous_timesteps = continuous_timesteps
 
@@ -235,7 +235,7 @@ class BaseTimeScheduler(ABC):
         r"""Set the continuous-time boundaries for ODE/Euler integration.
 
         Args:
-            continuous_boundaries (Tensor): 1D tensor of $N_{\text{inf}}+1$ boundary points.
+            continuous_boundaries: 1D tensor of $N_{\text{inf}}+1$ boundary points.
         """
         assert continuous_boundaries.ndim == 1, "continuous boundaries must be a 1D Tensor"
         assert len(continuous_boundaries) == self.num_inference_timesteps + 1, (
@@ -252,8 +252,8 @@ class BaseTimeScheduler(ABC):
         and converting to index via $\text{idx} = i - 1 + \text{idx\_start}$.
 
         Args:
-            macro_shape (Tuple[int, ...]): Shape of the output tensor.
-            same_for_all_samples (`bool`, *optional*): If True, use the same timestep index for all samples. Defaults to False.
+            macro_shape: Shape of the output tensor.
+            same_for_all_samples: If True, use the same timestep index for all samples. Defaults to False.
 
         Returns:
             Tensor: Timestep indices with shape `macro_shape`.
@@ -274,8 +274,8 @@ class BaseTimeScheduler(ABC):
         (the clean data point).
 
         Args:
-            macro_shape (Tuple[int, ...]): Shape of the output tensor.
-            same_for_all_samples (`bool`, *optional*): If True, use the same time for all samples. Defaults to False.
+            macro_shape: Shape of the output tensor.
+            same_for_all_samples: If True, use the same time for all samples. Defaults to False.
 
         Returns:
             Tensor: Continuous time values with shape `macro_shape`.

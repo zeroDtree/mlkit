@@ -42,7 +42,7 @@ class BaseLoss(Module, abc.ABC):
         r"""Compute loss
 
         Args:
-            batch (dict[str, Any]): the batch of data
+            batch: the batch of data
 
         Returns:
             `dict`|`Tensor`: a dictionary that must contain the key "loss"

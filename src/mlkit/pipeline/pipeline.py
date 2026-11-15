@@ -46,29 +46,10 @@ class TrainingConfig:
         *_args,
         **_kwargs,
     ):
-        """Initialize the TrainingConfig
+        """Training hyperparameters and checkpoint, eval, and save scheduling.
 
-        Args:
-            n_epochs (int, optional): the number of epochs
-            batch_size (int, optional): batch size. Defaults to 4.
-            device (str, optional): device in training. Defaults to "cuda".
-            save_strategy (Literal[&quot;epochs&quot;, &quot;steps&quot;, None], optional): save strategy determines whether to save the model and when to save it. Defaults to "epochs".
-            save_dir (str, optional): directory to save the model. Defaults to None.
-            save_steps (int, optional): save the model every n steps. Defaults to 10.
-            save_epochs (int, optional): save the model every n epochs. Defaults to 1.
-            save_total_limit (int, optional): maximum number of checkpoints to save. Defaults to 5.
-            num_workers (int, optional): number of workers to use for data loading. Defaults to 4.
-            train_shuffle (bool, optional): whether to shuffle the training data. Defaults to True.
-            eval_strategy (Literal[&quot;epochs&quot;, &quot;steps&quot;], optional): evaluation strategy determines whether to evaluate the model and when to evaluate it. Defaults to None.
-            eval_steps (int, optional): evaluate the model every n steps. Defaults to 500.
-            eval_epochs (int, optional): evaluate the model every n epochs. Defaults to 1.
-            grad_clip_strategy (Literal[&quot;norm&quot;, &quot;value&quot;, None], optional): gradient clip strategy determines whether to clip the gradient and how to clip it. Defaults to "norm".
-            max_grad_norm (float, optional): maximum gradient norm. Defaults to 1.0.
-            max_grad_value (float, optional): maximum gradient value. Defaults to 1.0.
-            gradient_accumulation_steps (int, optional): number of steps to accumulate gradients before updating the model. Defaults to 1.
-
-        Returns:
-            None
+        See the Training loop guide (``docs/training.md``) for how each field drives
+        the epoch and step clocks.
         """
         self.n_epochs = n_epochs
         self.batch_size = batch_size
@@ -99,14 +80,7 @@ class LogConfig:
         *_args,
         **_kwargs,
     ):
-        """Initialize the LogConfig
-
-        Args:
-            log_dir (str, optional): directory to save the logs. Defaults to "logs".
-            log_steps (int, optional): log the metrics every n steps. Defaults to 100.
-            log_epochs (int, optional): log the metrics every n epochs. Defaults to 1.
-            log_strategy (Literal[&quot;epochs&quot;, &quot;steps&quot;], optional): log strategy determines whether to log the metrics and when to log them. Defaults to "epochs".
-        """
+        """Directory and interval for file logging during training."""
         self.log_dir = log_dir
         self.log_steps = log_steps
         self.log_epochs = log_epochs
@@ -120,13 +94,7 @@ class TrainingState:
         current_step_in_epoch: int = 0,
         current_global_step: int = 0,
     ):
-        """Initialize the TrainingState
-
-        Args:
-            current_epoch (int, optional): the current epoch. Defaults to 0.
-            current_step_in_epoch (int, optional): the current step in the epoch. Defaults to 0.
-            current_global_step (int, optional): the current global step. Defaults to 0.
-        """
+        """Epoch, in-epoch step, and global step counters for resume and intervals."""
         self.current_epoch = current_epoch
         self.current_step_in_epoch = current_step_in_epoch
         self.current_global_step = current_global_step
@@ -170,17 +138,7 @@ class BasePipeline(metaclass=ABCMeta):
         *_args,
         **_kwargs,
     ):
-        """Initialize the BasePipeline
-
-        Args:
-            model (torch.nn.Module): the model to train
-            dataset (Union[torch.utils.data.Dataset, datasets.Dataset]): the dataset to train on
-            optimizers (Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LRScheduler]): the optimizers to use for training
-            training_config (TrainingConfig): the training configuration
-            log_config (LogConfig): the logging configuration
-            logger (logging.Logger | None): the logger to use for logging
-            collate_fn (Optional[Callable], optional): the collate function to use for the dataset. Defaults to None.
-        """
+        """Wire model, data, optimizers, configs, callbacks, and optional checkpoint resume."""
         super().__init__()
         # callbacks
         self.callback_manager = CallbackManager()
@@ -210,22 +168,10 @@ class BasePipeline(metaclass=ABCMeta):
 
     @abstractmethod
     def compute_loss(self, model: torch.nn.Module, batch: dict) -> Tensor | dict:
-        """Compute the loss
-
-        Args:
-            model (torch.nn.Module): the model to train
-            batch (dict): the batch of data
-
-        Returns:
-            Tensor | dict: loss Tensor or a dictionary containing the loss key
-        """
+        """Compute loss for one batch."""
 
     def train(self) -> None:
-        """Train the model
-
-        Returns:
-            None
-        """
+        """Run the epoch-based training loop until ``n_epochs`` or halt."""
         self.trigger_callbacks(event=CallbackEvent.TRAINING_START)
         n_epochs = self.training_config.n_epochs
 
@@ -307,13 +253,10 @@ class BasePipeline(metaclass=ABCMeta):
         return completed
 
     def train_a_step(self, batch: Dict[str, Any]) -> dict:
-        """Train the model for one step
+        """Run forward, backward, optional clip/step, and logging for one batch.
 
         Args:
-            batch (Dict[str, Any]): the batch of data
-
-        Returns:
-            dict: a dictionary containing the loss key
+            batch: Training batch moved to ``training_config.device``.
         """
         self.trigger_callbacks(event=CallbackEvent.STEP_START, batch=batch)
         model = self.model
@@ -354,11 +297,7 @@ class BasePipeline(metaclass=ABCMeta):
         return result
 
     def gradient_clip(self) -> None:
-        """Clip the gradient
-
-        Returns:
-            None
-        """
+        """Clip gradients when ``grad_clip_strategy`` is ``norm`` or ``value``."""
         model = self.model
         if self.training_config.grad_clip_strategy == "norm":
             torch.nn.utils.clip_grad_norm_(
@@ -374,7 +313,7 @@ class BasePipeline(metaclass=ABCMeta):
             )
 
     def eval(self):
-        """Evaluate the model"""
+        """Evaluate the model; subclasses implement distributed gathering."""
 
     def _halt_if_any_rank_failed(self) -> bool:
         """Return whether a rank-local failure should stop this training loop.
@@ -515,11 +454,7 @@ class BasePipeline(metaclass=ABCMeta):
         return False
 
     def save(self) -> None:
-        """Save the checkpoint
-
-        Returns:
-            None
-        """
+        """Write model, optimizer, and training state under ``save_dir``."""
         self.trigger_callbacks(event=CallbackEvent.PRE_SAVE)
         save_dir = self.training_config.save_dir
         if save_dir is None or save_dir == "":
@@ -564,11 +499,7 @@ class BasePipeline(metaclass=ABCMeta):
         self.trigger_callbacks(event=CallbackEvent.POST_SAVE)
 
     def load(self) -> None:
-        """Load the checkpoint
-
-        Returns:
-            None
-        """
+        """Restore the latest checkpoint from ``save_dir`` when present."""
         self.trigger_callbacks(event=CallbackEvent.PRE_LOAD)
         # check load condition ============================================================================
         checkpoint_dir = self.get_latest_checkpoint_dir()
@@ -600,19 +531,19 @@ class BasePipeline(metaclass=ABCMeta):
         return latest_checkpoint_dir(self.training_config.save_dir)
 
     def add_callbacks(self, callbacks: List[BaseCallback] | None):
-        """Add a list of callbacks
+        """Register extra pipeline callbacks.
 
         Args:
-            callbacks (List[BaseCallback] | None): the callbacks to add
+            callbacks: Callbacks to append, or ``None`` to skip.
         """
         self.callback_manager.add_callbacks(callbacks=callbacks)
 
     def trigger_callbacks(self, event: CallbackEvent, **kwargs):
-        """Trigger all callbacks for a given event
+        """Dispatch one callback event with training context and extra keywords.
 
         Args:
-            event (CallbackEvent): the event to trigger
-            **kwargs: the keyword arguments to pass to the callback
+            event: Callback lifecycle event.
+            **kwargs: Event-specific payload for callbacks.
         """
         self.callback_manager.trigger(
             event=event,

@@ -67,7 +67,7 @@ class VPSDE(SDE):
         """x_t = a * x_0 + b * epsilon, epsilon ~ N(0, 1)
 
         Args:
-            t (Tensor): continuous time
+            t: continuous time
 
         Returns:
             Tuple[Tensor, Tensor]: a, b

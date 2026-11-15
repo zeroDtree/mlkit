@@ -19,6 +19,8 @@ Recommended reading order:
 3. [Training loop](training.md) — epochs vs steps, checkpoints, callbacks, halt
 4. [Learning rate](learning-rate.md) — scheduler length under Accelerate
 
+Contributors: [Docstring style](docstrings.md) for API docstrings and the autoDocstring template.
+
 ## API Reference
 
 - [API Reference](api/index.md) — Auto-generated module documentation (`experiment` and `report` have dedicated pages)

@@ -1,4 +1,8 @@
-"""Tests for the event-driven typed state machine."""
+"""Tests for the event-driven typed state machine.
+
+Run with:
+    uv run pytest tests/util/test_state_machine.py
+"""
 
 from __future__ import annotations
 

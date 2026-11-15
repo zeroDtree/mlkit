@@ -25,7 +25,7 @@ class Shape(object):
         r"""Get the macro shape of $x$
 
         Args:
-            x (Tensor): $x$
+            x: $x$
 
         Returns:
             tuple[int, ...]: the shape of the macro part of $x$
@@ -36,7 +36,7 @@ class Shape(object):
         """Complete the micro shape of $x$, assuming the macro shape is already known
 
         Args:
-            x (Tensor): $x$
+            x: $x$
 
         Returns:
             Tensor: $x$ with the micro shape completed

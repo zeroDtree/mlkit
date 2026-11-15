@@ -18,9 +18,9 @@ def get_accumulated_conditional_score(
     r"""Get the accumulated conditional score
 
     Args:
-        x_t (Tensor): $x_t$
-        t (Tensor): $t$
-        padding_mask (Tensor): the padding mask
+        x_t: $x_t$
+        t: $t$
+        padding_mask: the padding mask
 
     Returns:
         Tensor: the accumulated conditional score

@@ -47,8 +47,6 @@ class EuclideanDDPMConfig(EuclideanDiffuserConfig):
             dynamic_thresholding_ratio: the ratio of the dynamic thresholding
             sample_max_value: the maximum value of the sample used in thresholding
             betas: the betas
-        Returns:
-            None
         """
         super().__init__(
             n_discretization_steps=n_discretization_steps,
@@ -90,14 +88,11 @@ class EuclideanDDPMDiffuser(EuclideanDiffuser):
         """Initialize the EuclideanDDPMDiffuser
 
         Args:
-            config (EuclideanDDPMConfig): the config of the diffuser
-            time_scheduler (DiffusionTimeScheduler): the time scheduler of the diffuser
-            masker (MaskerInterface): the masker of the diffuser
-            model (Module): the model of the diffuser
-            loss_fn (Callable[[Tensor, Tensor, Tensor], Tensor]): the loss function of the diffuser
-
-        Returns:
-            None
+            config: the config of the diffuser
+            time_scheduler: the time scheduler of the diffuser
+            masker: the masker of the diffuser
+            model: the model of the diffuser
+            loss_fn: the loss function of the diffuser
         """
         super().__init__(config=config, time_scheduler=time_scheduler, masker=masker)
         self.config: EuclideanDDPMConfig = config
@@ -189,9 +184,9 @@ class EuclideanDDPMDiffuser(EuclideanDiffuser):
         $$
 
         Args:
-            x_0 (Tensor): $x_0$
-            t (Tensor): $t$
-            mask (Tensor): the mask of the sample
+            x_0: $x_0$
+            t: $t$
+            mask: the mask of the sample
 
         Returns:
             Tuple[Tensor, Tensor]: the expectation and standard deviation of the sample
@@ -268,9 +263,9 @@ class EuclideanDDPMDiffuser(EuclideanDiffuser):
         $$
 
         Args:
-            x_t (Tensor): the sample at timestep t
-            t (Tensor): the timestep
-            padding_mask (Tensor): the padding mask
+            x_t: the sample at timestep t
+            t: the timestep
+            padding_mask: the padding mask
 
         Returns:
             dict:
@@ -360,7 +355,7 @@ class EuclideanDDPMDiffuser(EuclideanDiffuser):
         r"""Get the previous timestep for sampling.
 
         Args:
-            timestep (int): timestep
+            timestep: timestep
 
         Returns:
             int: the previous timestep for sampling
@@ -381,10 +376,10 @@ class EuclideanDDPMDiffuser(EuclideanDiffuser):
         $$
 
         Args:
-            _t (int): timestep
-            alpha_prod_t (Tensor): $\bar{\alpha}_t$
-            alpha_prod_t_prev (Tensor): $\bar{\alpha}_{t-1}$
-            current_beta_t (Tensor): $\beta_t$
+            _t: timestep
+            alpha_prod_t: $\bar{\alpha}_t$
+            alpha_prod_t_prev: $\bar{\alpha}_{t-1}$
+            current_beta_t: $\beta_t$
 
         Returns:
             Tensor: the variance for timestep t
@@ -404,8 +399,8 @@ class EuclideanDDPMDiffuser(EuclideanDiffuser):
         r"""Get the posterior mean function
 
         Args:
-            score (Tensor, optional): the score of the sample
-            score_fn (Callable, optional): the function to compute score
+            score: the score of the sample
+            score_fn: the function to compute score
 
         Returns:
             Callable: the posterior mean function

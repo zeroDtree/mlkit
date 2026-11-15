@@ -1,4 +1,8 @@
-"""Example configs keep artifacts relative to the directory the process starts in."""
+"""Example configs keep artifacts relative to the directory the process starts in.
+
+Run with:
+    uv run pytest tests/example/test_artifact_paths.py
+"""
 
 from __future__ import annotations
 

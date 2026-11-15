@@ -64,8 +64,6 @@ class EuclideanEDMConfig(EuclideanDiffuserConfig):
             do_edm_combine: If True (BioDiff default), pass ``c_in·x_t`` to the model
                 and form ``p_x_0 = c_skip·x_t + c_out·F``. If False (RFD3 path), pass
                 physical ``x_t`` and treat ``model["x"]`` as denoiser ``D`` / ``p_x_0``.
-        Returns:
-            None
         """
         super().__init__(
             n_discretization_steps=n_discretization_steps,
@@ -504,8 +502,8 @@ class EuclideanEDMDiffuser(EuclideanDiffuser):
         where $D_\theta$ is the denoised prediction.
 
         Args:
-            score (Tensor, optional): the score of the sample
-            score_fn (Callable, optional): the function to compute score
+            score: the score of the sample
+            score_fn: the function to compute score
 
         Returns:
             Callable: the posterior mean function

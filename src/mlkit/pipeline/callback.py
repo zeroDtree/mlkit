@@ -35,12 +35,12 @@ class CallbackEvent(Enum):
 class BaseCallback(metaclass=ABCMeta):
     @abstractmethod
     def on_event(self, event: CallbackEvent, *args, **kwargs):
-        """On event
+        """Handle one pipeline lifecycle event.
 
         Args:
-            event (CallbackEvent): the event to trigger
-            *args: the arguments to pass to the callback
-            **kwargs: the keyword arguments to pass to the callback
+            event: Callback event.
+            *args: Positional payload for the event.
+            **kwargs: Keyword payload for the event.
         """
 
 
@@ -49,30 +49,30 @@ class CallbackManager:
         self.callbacks: List[BaseCallback] = []
 
     def add_callback(self, callback: BaseCallback):
-        """Add a callback
+        """Append one callback.
 
         Args:
-            callback (BaseCallback): the callback to add
+            callback: Callback instance to register.
         """
         if callback is not None:
             self.callbacks.append(callback)
 
     def add_callbacks(self, callbacks: Optional[List[BaseCallback]]):
-        """Add a list of callbacks
+        """Append multiple callbacks.
 
         Args:
-            callbacks (Optional[List[BaseCallback]]): the callbacks to add
+            callbacks: Callbacks to register.
         """
         if callbacks is not None and len(callbacks) > 0:
             self.callbacks.extend(callbacks)
 
     def trigger(self, event: CallbackEvent, *args, **kwargs):
-        """Trigger all callbacks for a given event
+        """Invoke every registered callback for ``event``.
 
         Args:
-            event (CallbackEvent): the event to trigger
-            *args: the arguments to pass to the callback
-            **kwargs: the keyword arguments to pass to the callback
+            event: Callback event.
+            *args: Positional payload.
+            **kwargs: Keyword payload.
         """
         for callback in self.callbacks:
             callback.on_event(event, *args, **kwargs)

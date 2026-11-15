@@ -1,4 +1,8 @@
-"""Report callbacks for the MLflow and wandb adapters."""
+"""Report callbacks for the MLflow and wandb adapters.
+
+Run with:
+    uv run pytest tests/util/test_reporter.py
+"""
 
 from __future__ import annotations
 

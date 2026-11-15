@@ -77,7 +77,7 @@ class Scheduler:
         """Get the current value of the scheduler
 
         Args:
-            key (str, optional): The key of the scheduler to get. If None, return the entire scheduler info. Defaults to None.
+            key: The key of the scheduler to get. If None, return the entire scheduler info. Defaults to None.
 
         Returns:
             dict[str, Any] or Any: The entire scheduler info or the value of the scheduler for the given key

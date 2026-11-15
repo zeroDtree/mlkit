@@ -122,7 +122,7 @@ class SO3Diffuser(LieGroupDiffuser):
         $$
 
         Args:
-            shape (Tuple[int, ...]): the shape of the sample
+            shape: the shape of the sample
 
         Returns:
             Tensor: the initial noise
@@ -157,9 +157,9 @@ class SO3Diffuser(LieGroupDiffuser):
         $$
 
         Args:
-            x_0 (Tensor): the initial sample
-            discrete_t (Tensor): the discrete timestep
-            mask (Tensor): the mask
+            x_0: the initial sample
+            discrete_t: the discrete timestep
+            mask: the mask
             *args: additional arguments
             **kwargs: additional keyword arguments
 
@@ -192,10 +192,10 @@ class SO3Diffuser(LieGroupDiffuser):
         $$
 
         Args:
-            x_0 (Tensor): _description_
-            x_t (Tensor): _description_
-            discrete_t (Tensor): _description_
-            padding_mask (Tensor): _description_
+            x_0: _description_
+            x_t: _description_
+            discrete_t: _description_
+            padding_mask: _description_
 
         Returns:
             Tensor: _description_
@@ -281,7 +281,7 @@ class SO3Diffuser(LieGroupDiffuser):
         r"""Sample noise in Lie algebra, Skew-symmetric matrix
 
         Args:
-            macro_shape (Tuple[int, ...]): the macro shape of the noise
+            macro_shape: the macro shape of the noise
 
         Returns:
             Tensor: the noise in Lie algebra of shape $(*macro_shape, 3, 3)$

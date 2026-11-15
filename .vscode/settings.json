@@ -20,6 +20,9 @@
         }
     },
     "terminal.integrated.defaultProfile.linux": "fish",
+    "autoDocstring.docstringFormat": "google",
+    "autoDocstring.customTemplatePath": ".mustache",
+    "autoDocstring.generateDocstringOnEnter": true,
     "python.testing.pytestEnabled": true,
     "python.testing.unittestEnabled": false,
     "files.exclude": {

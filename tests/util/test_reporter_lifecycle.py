@@ -1,4 +1,8 @@
-"""Reporter open/close lifecycle (attach vs owned run)."""
+"""Reporter open/close lifecycle (attach vs owned run).
+
+Run with:
+    uv run pytest tests/util/test_reporter_lifecycle.py
+"""
 
 from __future__ import annotations
 

@@ -9,9 +9,9 @@ def get_split_num(origin_type: str = "bf16", quant_type: str = "int8"):
     Calculates the ratio of original type size to quantized type size.
 
     Args:
-        origin_type (str, optional): The data type of the original tensor. Defaults to "bf16".
+        origin_type: The data type of the original tensor. Defaults to "bf16".
                                      Options are "fp32" and "bf16".
-        quant_type (str, optional): The data type of the quantized tensor. Defaults to "int8".
+        quant_type: The data type of the quantized tensor. Defaults to "int8".
                                     Options are "int8" and "nf4".
 
     Raises:

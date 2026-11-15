@@ -1,4 +1,8 @@
-"""VAE metrics are attached to the model output."""
+"""VAE metrics are attached to the model output.
+
+Run with:
+    uv run pytest tests/example/test_moon_vae_metrics_hook.py
+"""
 
 from __future__ import annotations
 

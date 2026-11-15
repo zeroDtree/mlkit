@@ -8,9 +8,9 @@ def interp_1d(x: Tensor, xp: Tensor, fp: Tensor) -> Tensor:
     Supports x with arbitrary shape.
 
     Args:
-        x  (Tensor): The x-coordinates to interpolate at. Shape (...,)
-        xp (Tensor): The x-coordinates of the data points. Shape (M,)
-        fp (Tensor): The y-coordinates of the data points. Shape (M,)
+        x: The x-coordinates to interpolate at. Shape (...,)
+        xp: The x-coordinates of the data points. Shape (M,)
+        fp: The y-coordinates of the data points. Shape (M,)
 
     Returns:
         Tensor: Interpolated values at x. Shape (...,)
@@ -52,9 +52,9 @@ def interp(x: Tensor, xp: Tensor, fp: Tensor) -> Tensor:
     ... := macro_shape
 
     Args:
-        x  (Tensor): The x-coordinates to interpolate at. Shape (...,)
-        xp (Tensor): The x-coordinates of the data points. Shape (M,)
-        fp (Tensor): The y-coordinates of the data points. Shape (..., M,)
+        x: The x-coordinates to interpolate at. Shape (...,)
+        xp: The x-coordinates of the data points. Shape (M,)
+        fp: The y-coordinates of the data points. Shape (..., M,)
 
     Returns:
         Tensor: Interpolated values at x. Shape (...,)
