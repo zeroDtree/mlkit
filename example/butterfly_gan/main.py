@@ -6,7 +6,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import hydra
 from omegaconf import DictConfig
 from shared.model import build_ttur_optimizer
-from shared.runner import ExperimentSpec, run_experiment
+from mlkit.util.experiment import ExperimentSpec, run_experiment
 from utils import get_collate_fn, get_dataset, get_model
 
 from mlkit.generative_model.gan import GAN

@@ -27,7 +27,7 @@ class GetOptimizerFn(Protocol):
 
 @dataclass
 class ExperimentSpec:
-    """Specification for :func:`example.shared.runner.run_experiment`.
+    """Specification for :func:`mlkit.util.experiment.run_experiment`.
 
     Hook timing (relative to ``accelerator.end_training()``):
         ``pre_dist_teardown``: every rank, after ``pipeline.train()`` while the

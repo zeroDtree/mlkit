@@ -15,7 +15,7 @@ import pytest
 import torch
 from omegaconf import DictConfig, OmegaConf
 
-from example.shared.runner import ExperimentSpec, run_experiment
+from mlkit.util.experiment import ExperimentSpec, run_experiment
 from mlkit.util.failure import defer_error, has_deferred_error
 
 

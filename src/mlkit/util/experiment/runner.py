@@ -1,4 +1,7 @@
-"""Shared training loop for all examples."""
+"""Generic Hydra/OmegaConf training entry for examples.
+
+Expects ``cfg`` sections such as ``train``, ``log``, ``reporter``, ``mlflow``, and ``wandb``.
+"""
 
 from __future__ import annotations
 
@@ -6,9 +9,7 @@ from typing import Any, cast
 
 from omegaconf import DictConfig
 
-from mlkit.util.experiment import ExperimentSpec, TrainRunContext
-
-__all__ = ["ExperimentSpec", "TrainRunContext", "run_experiment"]
+from .types import ExperimentSpec, TrainRunContext
 
 
 def run_experiment(cfg: DictConfig, spec: ExperimentSpec) -> None:
