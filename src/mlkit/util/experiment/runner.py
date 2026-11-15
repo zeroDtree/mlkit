@@ -9,7 +9,7 @@ from typing import Any, cast
 
 from omegaconf import DictConfig
 
-from .types import ExperimentSpec, TrainRunContext
+from .types import ExperimentSpec, MaterializedRun
 
 
 def run_experiment(cfg: DictConfig, spec: ExperimentSpec) -> None:
@@ -43,7 +43,11 @@ def run_experiment(cfg: DictConfig, spec: ExperimentSpec) -> None:
     run_name = ""
     reporter = None
 
-    def _train():
+    def _materialize() -> MaterializedRun:
+        """Resolve spec/cfg into a :class:`MaterializedRun` (no ``pipeline.train()``).
+
+        May rewrite ``cfg`` for the LR scheduler before ``store_config``.
+        """
         model_bundle = spec.get_model(cfg)
         if not isinstance(model_bundle, dict):
             model_bundle = {"model": model_bundle}
@@ -53,7 +57,7 @@ def run_experiment(cfg: DictConfig, spec: ExperimentSpec) -> None:
             for handler in model_bundle.get("train_hook_handlers", []):
                 handler.disable()
 
-        train_set, val_set, _ = spec.get_dataset(cfg)
+        train_set, val_set, test_set = spec.get_dataset(cfg)
         optimizer = (spec.get_optimizer or get_optimizer)(model, cfg)
         lr_scheduler = get_learing_rate_scheduler(optimizer, accelerator, train_set, cfg)
         if accelerator.is_main_process:
@@ -71,6 +75,7 @@ def run_experiment(cfg: DictConfig, spec: ExperimentSpec) -> None:
 
         print(training_config.__dict__)
 
+        collate_fn = spec.get_collate(cfg)
         pipeline = PipelineClass(
             model=model,
             train_dataset=train_set,
@@ -78,28 +83,33 @@ def run_experiment(cfg: DictConfig, spec: ExperimentSpec) -> None:
             optimizers=(optimizer, lr_scheduler),
             training_config=training_config,
             log_config=log_config,
-            collate_fn=spec.get_collate(cfg),
+            collate_fn=collate_fn,
             logger=logger,
         )
         if reporter is not None:
             pipeline.add_callbacks([reporter.as_callback()])
-        pipeline.train()
-        return model_bundle, pipeline, train_set
+        return MaterializedRun(
+            cfg=cfg,
+            accelerator=accelerator,
+            reporter=reporter,
+            model_bundle=model_bundle,
+            train_set=train_set,
+            val_set=val_set,
+            test_set=test_set,
+            optimizer=optimizer,
+            lr_scheduler=lr_scheduler,
+            log_config=log_config,
+            training_config=training_config,
+            collate_fn=collate_fn,
+            pipeline=pipeline,
+        )
 
-    def _run_train() -> tuple[Any, Any, Any]:
-        trained = _train()
-        model_bundle, pipeline, train_set = trained
-        if spec.pre_dist_teardown is not None and not pipeline._halt:
-            ctx = TrainRunContext(
-                cfg=cfg,
-                model_bundle=model_bundle,
-                pipeline=pipeline,
-                accelerator=accelerator,
-                train_set=train_set,
-                reporter=reporter,
-            )
-            spec.pre_dist_teardown(ctx)
-        return trained
+    def _run_train() -> MaterializedRun:
+        run = _materialize()
+        run.pipeline.train()
+        if spec.pre_dist_teardown is not None and not run.pipeline._halt:
+            spec.pre_dist_teardown(run)
+        return run
 
     def _destroy_group() -> None:
         try:
@@ -108,21 +118,12 @@ def run_experiment(cfg: DictConfig, spec: ExperimentSpec) -> None:
             if logger is not None:
                 logger.exception("Failed to destroy the process group")
 
-    def _finish(trained: tuple[Any, Any, Any]) -> None:
-        model_bundle, pipeline, train_set = trained
+    def _finish(run: MaterializedRun) -> None:
         accelerator.wait_for_everyone()
         accelerator.end_training()
         raise_deferred_error()
         if accelerator.is_main_process and spec.post_dist_teardown is not None:
-            ctx = TrainRunContext(
-                cfg=cfg,
-                model_bundle=model_bundle,
-                pipeline=pipeline,
-                accelerator=accelerator,
-                train_set=train_set,
-                reporter=reporter,
-            )
-            spec.post_dist_teardown(ctx)
+            spec.post_dist_teardown(run)
 
     def _reporter_open_failed(local_open_error: BaseException | None) -> bool:
         if accelerator.num_processes == 1:
@@ -164,8 +165,8 @@ def run_experiment(cfg: DictConfig, spec: ExperimentSpec) -> None:
                 raise local_open_error
             raise RuntimeError("Reporter failed to open on another rank")
         try:
-            trained = _run_train()
+            run = _run_train()
         except BaseException:
             _destroy_group()
             raise
-        _finish(trained)
+        _finish(run)

@@ -26,6 +26,29 @@ class GetOptimizerFn(Protocol):
 
 
 @dataclass
+class MaterializedRun:
+    """Primary training run state from :func:`mlkit.util.experiment.run_experiment`.
+
+    Filled during materialize (before ``pipeline.train()``). Teardown hooks receive the
+    same instance after training; ``pipeline`` reflects post-train state.
+    """
+
+    cfg: DictConfig
+    accelerator: Any
+    reporter: Reporter | None
+    model_bundle: dict[str, Any]
+    train_set: Any
+    val_set: Any
+    test_set: Any
+    optimizer: Any
+    lr_scheduler: Any
+    log_config: Any
+    training_config: Any
+    collate_fn: Any
+    pipeline: Any
+
+
+@dataclass
 class ExperimentSpec:
     """Specification for :func:`mlkit.util.experiment.run_experiment`.
 
@@ -40,19 +63,7 @@ class ExperimentSpec:
     get_dataset: GetDatasetFn
     get_collate: GetCollateFn
     get_optimizer: GetOptimizerFn | None = None
-    pre_dist_teardown: Callable[[TrainRunContext], None] | None = None
-    post_dist_teardown: Callable[[TrainRunContext], None] | None = None
+    pre_dist_teardown: Callable[[MaterializedRun], None] | None = None
+    post_dist_teardown: Callable[[MaterializedRun], None] | None = None
     save_dir_suffix: str = ""
     disable_train_hooks: bool = True
-
-
-@dataclass
-class TrainRunContext:
-    """Hook context; ``model_bundle`` is the dict from ``get_model`` (at least a ``model`` key)."""
-
-    cfg: DictConfig
-    model_bundle: dict[str, Any]
-    pipeline: Any
-    accelerator: Any
-    train_set: Any
-    reporter: Reporter | None

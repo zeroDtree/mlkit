@@ -42,9 +42,10 @@ source "$SCRIPT_DIR/prepare.sh"
 cd "$PROJECT_ROOT" || exit 1
 
 uv sync
-uv run pytest
+
 uv run ruff check
 uv run ty check
+uv run pytest
 
 project_root_physical="$(cd "$PROJECT_ROOT" && pwd -P)"
 git_root="$(git -C "$PROJECT_ROOT" rev-parse --show-toplevel 2>/dev/null || true)"
