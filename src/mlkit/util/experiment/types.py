@@ -10,7 +10,7 @@ from mlkit.util.report.base import Reporter
 
 
 class GetModelFn(Protocol):
-    def __call__(self, cfg: DictConfig, **kwargs: Any) -> Any: ...
+    def __call__(self, cfg: DictConfig) -> Any: ...
 
 
 class GetDatasetFn(Protocol):
