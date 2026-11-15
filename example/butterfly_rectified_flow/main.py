@@ -13,7 +13,7 @@ from mlkit.util.huggingface import HF_MIRROR  # noqa: F401
 
 def post_dist_teardown(ctx):
     cfg = ctx.cfg
-    model_result = ctx.model_result
+    model_bundle = ctx.model_bundle
     pipeline = ctx.pipeline
     accelerator = ctx.accelerator
     del ctx.train_set

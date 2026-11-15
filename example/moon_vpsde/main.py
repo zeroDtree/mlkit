@@ -11,15 +11,15 @@ from utils import get_collate_fn, get_dataset, get_model
 
 def post_dist_teardown(ctx):
     cfg = ctx.cfg
-    model_result = ctx.model_result
+    model_bundle = ctx.model_bundle
     pipeline = ctx.pipeline
     accelerator = ctx.accelerator
     del ctx.train_set
     import matplotlib.pyplot as plt
     import torch
 
-    model = model_result["model"].model
-    sampling_hook_handlers = model_result["sampling_hook_handlers"]
+    model = model_bundle["model"].model
+    sampling_hook_handlers = model_bundle["sampling_hook_handlers"]
     model = model.to(accelerator.device)
 
     n_samples = 256

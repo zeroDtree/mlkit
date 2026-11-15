@@ -48,8 +48,10 @@ class ExperimentSpec:
 
 @dataclass
 class TrainRunContext:
+    """Hook context; ``model_bundle`` is the dict from ``get_model`` (at least a ``model`` key)."""
+
     cfg: DictConfig
-    model_result: dict[str, Any]
+    model_bundle: dict[str, Any]
     pipeline: Any
     accelerator: Any
     train_set: Any

@@ -1,4 +1,4 @@
-"""Experiment-scoped reporter lifecycle."""
+"""Reporter lifecycle context manager (not :class:`mlkit.util.experiment.TrainRunContext`)."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from typing import Any
 from .base import Reporter
 
 
-class ReporterScope:
+class ReporterContext:
     """Class context manager: ``open`` on enter, ``close`` on exit."""
 
     def __init__(

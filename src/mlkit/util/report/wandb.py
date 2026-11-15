@@ -2,7 +2,6 @@ from collections.abc import Mapping
 from typing import Any, Literal
 
 from .base import Reporter
-from .callback import ReportCallback
 from .data import _plain_data
 
 WandbMode = Literal["online", "offline", "disabled", "shared"]
@@ -116,45 +115,3 @@ class WandbReporter(Reporter):
             wandb.log(payload)
         else:
             wandb.log(payload, step=step)
-
-
-class WandbCallback(ReportCallback):
-    """Deprecated: prefer :class:`WandbReporter` with :class:`ReporterScope`."""
-
-    def __init__(
-        self,
-        *,
-        project: str | None,
-        name: str,
-        group: str | None,
-        entity: str | None,
-        mode: str | None,
-        reinit: bool,
-        config: Mapping[str, Any],
-        run_id: str | None = None,
-    ) -> None:
-        self._lifecycle_open = False
-        super().__init__(
-            WandbReporter(
-                project=project,
-                name=name,
-                group=group,
-                entity=entity,
-                mode=mode,
-                reinit=reinit,
-                config=config,
-                run_id=run_id,
-            )
-        )
-
-    def __enter__(self) -> "WandbCallback":
-        self._reporter.open()
-        self._lifecycle_open = True
-        return self
-
-    def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
-        del exc, tb
-        if self._lifecycle_open:
-            self._reporter.close(success=exc_type is None)
-            self._lifecycle_open = False
-        return None

@@ -6,7 +6,7 @@ from typing import Any, cast
 
 import pytest
 
-from mlkit.util.report import MLflowReporter, ReporterScope, get_reporter
+from mlkit.util.report import MLflowReporter, ReporterContext, get_reporter
 
 
 class _FakeMlflow:
@@ -63,7 +63,7 @@ def test_reporter_scope_marks_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("MLFLOW_TRACKING_URI", raising=False)
 
     with pytest.raises(RuntimeError, match="boom"):
-        with ReporterScope("mlflow", run_name="run", config={}, mlflow={"experiment": "local"}) as reporter:
+        with ReporterContext("mlflow", run_name="run", config={}, mlflow={"experiment": "local"}) as reporter:
             del reporter
             raise RuntimeError("boom")
 

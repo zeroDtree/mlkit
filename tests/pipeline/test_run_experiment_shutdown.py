@@ -167,7 +167,7 @@ def test_main_process_destroys_group_before_post_train(monkeypatch: pytest.Monke
     accelerator = _install(monkeypatch, events, is_main=True)
 
     def post_dist_teardown(ctx) -> None:
-        del ctx.cfg, ctx.model_result, ctx.pipeline, ctx.train_set
+        del ctx.cfg, ctx.model_bundle, ctx.pipeline, ctx.train_set
         assert ctx.accelerator is accelerator
         events.append("post")
 
@@ -247,7 +247,7 @@ def test_post_train_error_stays_inside_reporter(monkeypatch: pytest.MonkeyPatch)
             if isinstance(exc, BaseException):
                 seen.append(exc)
 
-    monkeypatch.setattr("mlkit.util.report.ReporterScope", _OpenScope)
+    monkeypatch.setattr("mlkit.util.report.ReporterContext", _OpenScope)
 
     def post_dist_teardown(ctx) -> None:
         del ctx
@@ -355,7 +355,7 @@ def test_scheduler_rewrite_replaces_the_stored_config(monkeypatch: pytest.Monkey
         def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
             del exc_type, exc, tb
 
-    monkeypatch.setattr("mlkit.util.report.ReporterScope", _RecordingScope)
+    monkeypatch.setattr("mlkit.util.report.ReporterContext", _RecordingScope)
 
     def post_dist_teardown(ctx) -> None:
         del ctx
@@ -453,7 +453,7 @@ def test_reporter_open_error_destroys_group_without_training(monkeypatch: pytest
         def __exit__(self, *args: object) -> None:
             del args
 
-    monkeypatch.setattr("mlkit.util.report.ReporterScope", _FailOpenScope)
+    monkeypatch.setattr("mlkit.util.report.ReporterContext", _FailOpenScope)
 
     def post_dist_teardown(ctx) -> None:
         del ctx
@@ -487,7 +487,7 @@ def test_end_training_error_keeps_the_reporter_open_error(monkeypatch: pytest.Mo
         def __exit__(self, *args: object) -> None:
             del args
 
-    monkeypatch.setattr("mlkit.util.report.ReporterScope", _FailOpenScope)
+    monkeypatch.setattr("mlkit.util.report.ReporterContext", _FailOpenScope)
 
     def post_dist_teardown(ctx) -> None:
         del ctx
@@ -544,7 +544,7 @@ def test_reporter_open_error_sets_the_trigger(monkeypatch: pytest.MonkeyPatch):
         def __exit__(self, *args: object) -> None:
             del args
 
-    monkeypatch.setattr("mlkit.util.report.ReporterScope", _FailOpenScope)
+    monkeypatch.setattr("mlkit.util.report.ReporterContext", _FailOpenScope)
 
     def post_dist_teardown(ctx) -> None:
         del ctx
@@ -574,7 +574,7 @@ def test_other_rank_stops_when_reporter_open_fails(monkeypatch: pytest.MonkeyPat
         def __exit__(self, *args: object) -> None:
             del args
 
-    monkeypatch.setattr("mlkit.util.report.ReporterScope", _AssertScope)
+    monkeypatch.setattr("mlkit.util.report.ReporterContext", _AssertScope)
 
     def post_dist_teardown(ctx) -> None:
         del ctx
@@ -607,7 +607,7 @@ def test_local_main_that_is_not_global_main_skips_the_reporter(monkeypatch: pyte
         def __exit__(self, *args: object) -> None:
             del args
 
-    monkeypatch.setattr("mlkit.util.report.ReporterScope", _AssertScope)
+    monkeypatch.setattr("mlkit.util.report.ReporterContext", _AssertScope)
 
     def post_dist_teardown(ctx) -> None:
         del ctx

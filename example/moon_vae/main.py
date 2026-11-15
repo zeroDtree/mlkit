@@ -16,7 +16,7 @@ COLLAPSE_X_HAT_STD_THRESHOLD = 0.05
 
 def post_dist_teardown(ctx):
     cfg = ctx.cfg
-    model_result = ctx.model_result
+    model_bundle = ctx.model_bundle
     pipeline = ctx.pipeline
     accelerator = ctx.accelerator
     del ctx.train_set

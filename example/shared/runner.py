@@ -22,7 +22,7 @@ def run_experiment(cfg: DictConfig, spec: ExperimentSpec) -> None:
     from mlkit.pipeline.pipeline import LogConfig, latest_checkpoint_dir
     from mlkit.util.failure import clear_deferred_error, raise_deferred_error
     from mlkit.util.log import get_and_create_new_log_dir, get_logger
-    from mlkit.util.report import ReporterScope, resume_run_id
+    from mlkit.util.report import ReporterContext, resume_run_id
     from mlkit.util.seed import seed_everything
     from mlkit.util.show import show_info
     from mlkit.util.utils_for_main import (
@@ -43,13 +43,13 @@ def run_experiment(cfg: DictConfig, spec: ExperimentSpec) -> None:
     reporter = None
 
     def _train():
-        model_result = spec.get_model(cfg)
-        if not isinstance(model_result, dict):
-            model_result = {"model": model_result}
-        model = model_result["model"]
+        model_bundle = spec.get_model(cfg)
+        if not isinstance(model_bundle, dict):
+            model_bundle = {"model": model_bundle}
+        model = model_bundle["model"]
 
         if spec.disable_train_hooks:
-            for handler in model_result.get("train_hook_handlers", []):
+            for handler in model_bundle.get("train_hook_handlers", []):
                 handler.disable()
 
         train_set, val_set, _ = spec.get_dataset(cfg)
@@ -83,15 +83,15 @@ def run_experiment(cfg: DictConfig, spec: ExperimentSpec) -> None:
         if reporter is not None:
             pipeline.add_callbacks([reporter.as_callback()])
         pipeline.train()
-        return model_result, pipeline, train_set
+        return model_bundle, pipeline, train_set
 
     def _run_train() -> tuple[Any, Any, Any]:
         trained = _train()
-        model_result, pipeline, train_set = trained
+        model_bundle, pipeline, train_set = trained
         if spec.pre_dist_teardown is not None and not pipeline._halt:
             ctx = TrainRunContext(
                 cfg=cfg,
-                model_result=model_result,
+                model_bundle=model_bundle,
                 pipeline=pipeline,
                 accelerator=accelerator,
                 train_set=train_set,
@@ -108,14 +108,14 @@ def run_experiment(cfg: DictConfig, spec: ExperimentSpec) -> None:
                 logger.exception("Failed to destroy the process group")
 
     def _finish(trained: tuple[Any, Any, Any]) -> None:
-        model_result, pipeline, train_set = trained
+        model_bundle, pipeline, train_set = trained
         accelerator.wait_for_everyone()
         accelerator.end_training()
         raise_deferred_error()
         if accelerator.is_main_process and spec.post_dist_teardown is not None:
             ctx = TrainRunContext(
                 cfg=cfg,
-                model_result=model_result,
+                model_bundle=model_bundle,
                 pipeline=pipeline,
                 accelerator=accelerator,
                 train_set=train_set,
@@ -123,16 +123,16 @@ def run_experiment(cfg: DictConfig, spec: ExperimentSpec) -> None:
             )
             spec.post_dist_teardown(ctx)
 
-    def _reporter_open_failed(open_error: BaseException | None) -> bool:
+    def _reporter_open_failed(local_open_error: BaseException | None) -> bool:
         if accelerator.num_processes == 1:
-            return open_error is not None
-        if open_error is not None:
+            return local_open_error is not None
+        if local_open_error is not None:
             accelerator.set_trigger()
         return bool(accelerator.check_trigger())
 
     clear_deferred_error()
     with ExitStack() as stack:
-        open_error: BaseException | None = None
+        local_open_error: BaseException | None = None
         if accelerator.is_main_process:
             try:
                 log_dir = get_and_create_new_log_dir(cfg.log.log_dir)
@@ -146,7 +146,7 @@ def run_experiment(cfg: DictConfig, spec: ExperimentSpec) -> None:
                 checkpoint_dir = latest_checkpoint_dir(
                     get_new_save_dir(cfg.train.save_dir, cfg, suffix=spec.save_dir_suffix)
                 )
-                scope = ReporterScope(
+                reporter_context = ReporterContext(
                     reporter_kind,
                     run_name=run_name,
                     config=resolved_config,
@@ -154,13 +154,13 @@ def run_experiment(cfg: DictConfig, spec: ExperimentSpec) -> None:
                     wandb=cast(dict[str, Any], OmegaConf.to_container(cfg.wandb, resolve=True)),
                     resume_run_id=resume_run_id(checkpoint_dir, reporter_kind),
                 )
-                reporter = stack.enter_context(scope)
+                reporter = stack.enter_context(reporter_context)
             except BaseException as exc:
-                open_error = exc
-        if _reporter_open_failed(open_error):
+                local_open_error = exc
+        if _reporter_open_failed(local_open_error):
             _destroy_group()
-            if open_error is not None:
-                raise open_error
+            if local_open_error is not None:
+                raise local_open_error
             raise RuntimeError("Reporter failed to open on another rank")
         try:
             trained = _run_train()

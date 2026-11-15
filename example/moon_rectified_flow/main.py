@@ -15,7 +15,7 @@ def pre_dist_teardown(ctx):
     """Train the conditional flow on every rank while the process group is alive."""
     cfg = ctx.cfg
     accelerator = ctx.accelerator
-    del ctx.model_result, ctx.pipeline, ctx.train_set
+    del ctx.model_bundle, ctx.pipeline, ctx.train_set
     from typing import Any, cast
 
     from omegaconf import OmegaConf
@@ -73,12 +73,12 @@ def post_dist_teardown(ctx):
     from torch import Tensor
 
     cfg = ctx.cfg
-    model_result = ctx.model_result
+    model_bundle = ctx.model_bundle
     accelerator = ctx.accelerator
     del ctx.pipeline, ctx.train_set
 
-    model = model_result["model"].model
-    sampling_hook_handlers = model_result["sampling_hook_handlers"]
+    model = model_bundle["model"].model
+    sampling_hook_handlers = model_bundle["sampling_hook_handlers"]
     model = model.to(accelerator.device)
     n_samples = 256
     n_steps = cfg.flow.n_discretization_steps

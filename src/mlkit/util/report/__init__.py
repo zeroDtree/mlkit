@@ -1,26 +1,22 @@
-import warnings
 from collections.abc import Mapping
 from typing import Any
 
 from .base import NullReporter, Reporter
 from .callback import NullReportCallback, ReportCallback
-from .mlflow import MLflowCallback, MLflowReporter
+from .mlflow import MLflowReporter
 from .run_file import resume_run_id, write_report_run
-from .scope import ReporterScope
-from .wandb import WandbCallback, WandbReporter
+from .context import ReporterContext
+from .wandb import WandbReporter
 
 __all__ = [
-    "MLflowCallback",
     "MLflowReporter",
     "NullReporter",
     "NullReportCallback",
     "ReportCallback",
     "Reporter",
-    "ReporterScope",
-    "WandbCallback",
+    "ReporterContext",
     "WandbReporter",
     "get_reporter",
-    "reporter_callback",
     "resume_run_id",
     "write_report_run",
 ]
@@ -62,28 +58,3 @@ def get_reporter(
             run_id=resume_run_id,
         )
     raise ValueError(f"Unknown reporter: {kind}")
-
-
-def reporter_callback(
-    kind: str,
-    *,
-    run_name: str,
-    config: Mapping[str, Any],
-    mlflow: Mapping[str, Any] | None = None,
-    wandb: Mapping[str, Any] | None = None,
-    resume_run_id: str | None = None,
-) -> ReportCallback:
-    """Deprecated: use :func:`get_reporter` and :meth:`Reporter.as_callback`."""
-    warnings.warn(
-        "reporter_callback is deprecated; use get_reporter(...).as_callback()",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    return get_reporter(
-        kind,
-        run_name=run_name,
-        config=config,
-        mlflow=mlflow,
-        wandb=wandb,
-        resume_run_id=resume_run_id,
-    ).as_callback()

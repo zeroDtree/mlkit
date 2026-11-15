@@ -163,7 +163,7 @@ class ObjectAttrsScheduler:
 
 
 if __name__ == "__main__":
-    from mlkit.util.report import MLflowCallback
+    from mlkit.util.report import ReporterContext
 
     total = 100
     warmup_ratio = 0.1
@@ -190,12 +190,12 @@ if __name__ == "__main__":
         setter_methods={"x": "set_x"},
         getter_methods={"x": "get_x"},
     )
-    with MLflowCallback(
-        tracking_uri=None,
-        experiment="scheduler-test",
+    with ReporterContext(
+        "mlflow",
         run_name="scheduler-test",
         config={},
-    ) as callback:
+        mlflow={"experiment": "scheduler-test"},
+    ) as reporter:
         for i in range(total):
             scheduler.step()
-            callback.log(scheduler.get(), step=i)
+            reporter.log(scheduler.get(), step=i)

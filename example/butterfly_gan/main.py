@@ -29,13 +29,13 @@ def _to_pil_grid(images, rows: int = 4, cols: int = 4):
 
 def post_dist_teardown(ctx):
     cfg = ctx.cfg
-    model_result = ctx.model_result
+    model_bundle = ctx.model_bundle
     pipeline = ctx.pipeline
     accelerator = ctx.accelerator
     del ctx.train_set
     import torch
 
-    gan: GAN = model_result["model"].model
+    gan: GAN = model_bundle["model"].model
     gan = gan.to(accelerator.device)
     gan.eval()
     if gan.ema is not None:

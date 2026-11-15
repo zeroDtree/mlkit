@@ -4,7 +4,6 @@ from pathlib import Path
 from typing import Any
 
 from .base import Reporter
-from .callback import ReportCallback
 from .data import _finite_metrics, _plain_data
 
 
@@ -131,41 +130,3 @@ class MLflowReporter(Reporter):
             mlflow.log_metrics(metrics)
         else:
             mlflow.log_metrics(metrics, step=step)
-
-
-class MLflowCallback(ReportCallback):
-    """Deprecated: prefer :class:`MLflowReporter` with :class:`ReporterScope`."""
-
-    def __init__(
-        self,
-        *,
-        tracking_uri: str | None,
-        experiment: str,
-        run_name: str,
-        config: Mapping[str, Any],
-        run_id: str | None = None,
-        artifact_location: str | None = None,
-    ) -> None:
-        self._lifecycle_open = False
-        super().__init__(
-            MLflowReporter(
-                tracking_uri=tracking_uri,
-                experiment=experiment,
-                run_name=run_name,
-                config=config,
-                run_id=run_id,
-                artifact_location=artifact_location,
-            )
-        )
-
-    def __enter__(self) -> "MLflowCallback":
-        self._reporter.open()
-        self._lifecycle_open = True
-        return self
-
-    def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
-        del exc, tb
-        if self._lifecycle_open:
-            self._reporter.close(success=exc_type is None)
-            self._lifecycle_open = False
-        return None

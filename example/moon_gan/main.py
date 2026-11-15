@@ -14,13 +14,13 @@ from mlkit.generative_model.gan import GAN
 
 def post_dist_teardown(ctx):
     cfg = ctx.cfg
-    model_result = ctx.model_result
+    model_bundle = ctx.model_bundle
     pipeline = ctx.pipeline
     accelerator = ctx.accelerator
     del ctx.train_set
     import matplotlib.pyplot as plt
 
-    gan: GAN = model_result["model"].model
+    gan: GAN = model_bundle["model"].model
     gan = gan.to(accelerator.device)
     gan.eval()
     if gan.ema is not None:

@@ -13,13 +13,13 @@ from mlkit.generative_model.ebm import EnergyBasedModel
 
 def post_dist_teardown(ctx):
     cfg = ctx.cfg
-    model_result = ctx.model_result
+    model_bundle = ctx.model_bundle
     pipeline = ctx.pipeline
     accelerator = ctx.accelerator
     del ctx.train_set
     import matplotlib.pyplot as plt
 
-    model: EnergyBasedModel = model_result["model"].model
+    model: EnergyBasedModel = model_bundle["model"].model
     model = model.to(accelerator.device)
     model.eval()
 

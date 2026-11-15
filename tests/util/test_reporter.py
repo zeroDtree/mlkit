@@ -11,19 +11,18 @@ import pytest
 from mlkit.pipeline.callback import CallbackEvent
 from mlkit.pipeline.pipeline import latest_checkpoint_dir
 from mlkit.util.report import (
-    MLflowCallback,
     NullReportCallback,
     ReportCallback,
-    WandbCallback,
-    reporter_callback,
+    ReporterContext,
+    get_reporter,
     resume_run_id,
     write_report_run,
 )
 
 
-def test_reporter_callback_rejects_unknown_kind():
+def test_get_reporter_rejects_unknown_kind():
     with pytest.raises(ValueError, match="Unknown reporter"):
-        reporter_callback("nope", run_name="run", config={})
+        get_reporter("nope", run_name="run", config={})
 
 
 def test_report_callback_needs_a_reporter():
@@ -80,7 +79,7 @@ def test_mlflow_reporter_defaults_to_sqlite_without_env(monkeypatch):
     monkeypatch.setitem(sys.modules, "mlflow", cast(Any, fake))
     monkeypatch.delenv("MLFLOW_TRACKING_URI", raising=False)
 
-    with MLflowCallback(tracking_uri=None, experiment="local", run_name="run", config={"a": 1}):
+    with ReporterContext("mlflow", run_name="run", config={"a": 1}, mlflow={"experiment": "local"}):
         pass
 
     assert ("uri", "sqlite:///mlflow.db") in fake.calls
@@ -95,7 +94,7 @@ def test_mlflow_reporter_keeps_tracking_uri_env(monkeypatch):
     monkeypatch.setitem(sys.modules, "mlflow", cast(Any, fake))
     monkeypatch.setenv("MLFLOW_TRACKING_URI", "http://127.0.0.1:5000")
 
-    with MLflowCallback(tracking_uri=None, experiment="remote", run_name="run", config={}):
+    with ReporterContext("mlflow", run_name="run", config={}, mlflow={"experiment": "remote"}):
         pass
 
     assert not any(call[0] == "uri" for call in fake.calls)
@@ -115,7 +114,7 @@ def test_mlflow_log_dict_failure_ends_the_run(monkeypatch):
     monkeypatch.delenv("MLFLOW_TRACKING_URI", raising=False)
 
     with pytest.raises(RuntimeError, match="artifact down"):
-        with MLflowCallback(tracking_uri=None, experiment="local", run_name="run", config={"a": 1}):
+        with ReporterContext("mlflow", run_name="run", config={"a": 1}, mlflow={"experiment": "local"}):
             pass
 
     assert _ended_failed(fake.calls)
@@ -130,7 +129,7 @@ def test_mlflow_empty_run_id_ends_the_run(monkeypatch):
     monkeypatch.delenv("MLFLOW_TRACKING_URI", raising=False)
 
     with pytest.raises(RuntimeError, match="did not start a run"):
-        with MLflowCallback(tracking_uri=None, experiment="local", run_name="run", config={}):
+        with ReporterContext("mlflow", run_name="run", config={}, mlflow={"experiment": "local"}):
             pass
 
     assert _ended_failed(fake.calls)
@@ -145,7 +144,7 @@ def test_mlflow_start_run_failure_does_not_end_the_run(monkeypatch):
     monkeypatch.delenv("MLFLOW_TRACKING_URI", raising=False)
 
     with pytest.raises(RuntimeError, match="tracking down"):
-        with MLflowCallback(tracking_uri=None, experiment="local", run_name="run", config={}):
+        with ReporterContext("mlflow", run_name="run", config={}, mlflow={"experiment": "local"}):
             pass
 
     assert not any(call[0] == "end" for call in fake.calls)
@@ -158,11 +157,11 @@ def test_mlflow_store_config_replaces_the_artifact(monkeypatch):
     monkeypatch.setitem(sys.modules, "mlflow", cast(Any, fake))
     monkeypatch.delenv("MLFLOW_TRACKING_URI", raising=False)
 
-    with MLflowCallback(
-        tracking_uri=None,
-        experiment="local",
+    with ReporterContext(
+        "mlflow",
         run_name="run",
         config={"train": {"n_steps": 1}},
+        mlflow={"experiment": "local"},
     ) as reporter:
         reporter.store_config({"train": {"n_steps": 99}})
 
@@ -178,15 +177,16 @@ def test_mlflow_reporter_sqlite_store(tmp_path):
 
     tracking_uri = f"sqlite:///{tmp_path / 'mlflow.db'}"
     artifact_location = tmp_path / "mlruns"
-    with (
-        MLflowCallback(
-            tracking_uri=tracking_uri,
-            experiment="unit",
-            run_name="run-a",
-            config={"lr": 0.1, "nested": {"a": 1}},
-            artifact_location=str(artifact_location),
-        ) as mlflow_reporter,
-    ):
+    with ReporterContext(
+        "mlflow",
+        run_name="run-a",
+        config={"lr": 0.1, "nested": {"a": 1}},
+        mlflow={
+            "tracking_uri": tracking_uri,
+            "experiment": "unit",
+            "artifact_location": str(artifact_location),
+        },
+    ) as mlflow_reporter:
         mlflow_reporter.log({"loss": 1.0, "bad": float("nan"), "name": "skip"}, step=0)
         mlflow_reporter.log({"loss": 0.5}, step=1)
 
@@ -250,17 +250,12 @@ def test_wandb_reporter_calls_init_log_finish(monkeypatch):
     fake_wandb = _FakeWandb()
     monkeypatch.setitem(sys.modules, "wandb", cast(Any, fake_wandb))
 
-    with (
-        WandbCallback(
-            project="p",
-            name="n",
-            group="g",
-            entity="e",
-            mode="offline",
-            reinit=True,
-            config={"a": 1},
-        ) as wandb_reporter,
-    ):
+    with ReporterContext(
+        "wandb",
+        run_name="n",
+        config={"a": 1},
+        wandb={"project": "p", "group": "g", "entity": "e", "mode": "offline", "reinit": True},
+    ) as wandb_reporter:
         wandb_reporter.log({"loss": 0.2}, step=4)
 
     events = fake_wandb.events
@@ -285,14 +280,11 @@ def test_wandb_reporter_finish_marks_failure(monkeypatch):
     monkeypatch.setitem(sys.modules, "wandb", cast(Any, fake_wandb))
 
     with pytest.raises(RuntimeError, match="boom"):
-        with WandbCallback(
-            project="p",
-            name="n",
-            group=None,
-            entity=None,
-            mode="offline",
-            reinit=True,
+        with ReporterContext(
+            "wandb",
+            run_name="n",
             config={},
+            wandb={"project": "p", "mode": "offline", "reinit": True},
         ):
             raise RuntimeError("boom")
 
@@ -312,14 +304,11 @@ def test_wandb_empty_run_id_finishes(monkeypatch):
     monkeypatch.setitem(sys.modules, "wandb", cast(Any, fake_wandb))
 
     with pytest.raises(RuntimeError, match="did not start a run"):
-        with WandbCallback(
-            project="p",
-            name="n",
-            group=None,
-            entity=None,
-            mode="offline",
-            reinit=True,
+        with ReporterContext(
+            "wandb",
+            run_name="n",
             config={},
+            wandb={"project": "p", "mode": "offline", "reinit": True},
         ):
             pass
 
@@ -339,14 +328,11 @@ def test_wandb_init_failure_does_not_finish(monkeypatch):
     monkeypatch.setitem(sys.modules, "wandb", cast(Any, fake_wandb))
 
     with pytest.raises(RuntimeError, match="wandb down"):
-        with WandbCallback(
-            project="p",
-            name="n",
-            group=None,
-            entity=None,
-            mode="offline",
-            reinit=True,
+        with ReporterContext(
+            "wandb",
+            run_name="n",
             config={},
+            wandb={"project": "p", "mode": "offline", "reinit": True},
         ):
             pass
 
@@ -359,14 +345,11 @@ def test_wandb_store_config_replaces_the_run_config(monkeypatch):
     fake_wandb = _FakeWandb()
     monkeypatch.setitem(sys.modules, "wandb", cast(Any, fake_wandb))
 
-    with WandbCallback(
-        project="p",
-        name="n",
-        group=None,
-        entity=None,
-        mode="offline",
-        reinit=True,
+    with ReporterContext(
+        "wandb",
+        run_name="n",
         config={"train": {"n_steps": 1}},
+        wandb={"project": "p", "mode": "offline", "reinit": True},
     ) as reporter:
         reporter.store_config({"train": {"n_steps": 99}})
 
@@ -379,15 +362,12 @@ def test_wandb_reporter_resumes_with_allow(monkeypatch):
     fake_wandb = _FakeWandb()
     monkeypatch.setitem(sys.modules, "wandb", cast(Any, fake_wandb))
 
-    with WandbCallback(
-        project="p",
-        name="n",
-        group=None,
-        entity=None,
-        mode="offline",
-        reinit=True,
+    with ReporterContext(
+        "wandb",
+        run_name="n",
         config={},
-        run_id="abc123",
+        resume_run_id="abc123",
+        wandb={"project": "p", "mode": "offline", "reinit": True},
     ) as wandb_reporter:
         assert wandb_reporter.run_id == "abc123"
 
@@ -401,12 +381,15 @@ def test_mlflow_reporter_artifact_location(tmp_path):
 
     tracking_uri = f"sqlite:///{tmp_path / 'mlflow.db'}"
     artifact_location = tmp_path / "mlruns"
-    with MLflowCallback(
-        tracking_uri=tracking_uri,
-        experiment="placed",
+    with ReporterContext(
+        "mlflow",
         run_name="run-a",
         config={"lr": 0.1},
-        artifact_location=str(artifact_location),
+        mlflow={
+            "tracking_uri": tracking_uri,
+            "experiment": "placed",
+            "artifact_location": str(artifact_location),
+        },
     ):
         pass
 
@@ -416,12 +399,15 @@ def test_mlflow_reporter_artifact_location(tmp_path):
     assert Path(experiment.artifact_location).resolve() == artifact_location.resolve()
     assert any(path.name == "config.yaml" for path in artifact_location.rglob("config.yaml"))
 
-    with MLflowCallback(
-        tracking_uri=tracking_uri,
-        experiment="placed",
+    with ReporterContext(
+        "mlflow",
         run_name="run-b",
         config={"lr": 0.2},
-        artifact_location=str(tmp_path / "elsewhere"),
+        mlflow={
+            "tracking_uri": tracking_uri,
+            "experiment": "placed",
+            "artifact_location": str(tmp_path / "elsewhere"),
+        },
     ):
         pass
 
@@ -437,29 +423,31 @@ def test_mlflow_reporter_resumes_same_run(tmp_path):
 
     tracking_uri = f"sqlite:///{tmp_path / 'mlflow.db'}"
     artifact_location = tmp_path / "mlruns"
-    with (
-        MLflowCallback(
-            tracking_uri=tracking_uri,
-            experiment="unit",
-            run_name="run-a",
-            config={"lr": 0.1},
-            artifact_location=str(artifact_location),
-        ) as first,
-    ):
+    with ReporterContext(
+        "mlflow",
+        run_name="run-a",
+        config={"lr": 0.1},
+        mlflow={
+            "tracking_uri": tracking_uri,
+            "experiment": "unit",
+            "artifact_location": str(artifact_location),
+        },
+    ) as first:
         first.log({"loss": 1.0}, step=0)
         run_id = first.run_id
 
     assert isinstance(run_id, str)
-    with (
-        MLflowCallback(
-            tracking_uri=tracking_uri,
-            experiment="unit",
-            run_name="run-a",
-            config={"lr": 0.1},
-            run_id=run_id,
-            artifact_location=str(artifact_location),
-        ) as second,
-    ):
+    with ReporterContext(
+        "mlflow",
+        run_name="run-a",
+        config={"lr": 0.1},
+        resume_run_id=run_id,
+        mlflow={
+            "tracking_uri": tracking_uri,
+            "experiment": "unit",
+            "artifact_location": str(artifact_location),
+        },
+    ) as second:
         assert second.run_id == run_id
         second.log({"loss": 0.5}, step=1)
 
