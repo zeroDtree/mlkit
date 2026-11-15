@@ -2,7 +2,7 @@ r"""
 SO(3): Special Orthogonal Group
 """
 
-from typing import Callable, Tuple
+from typing import Callable, Tuple, override
 
 import torch
 from torch import Tensor
@@ -63,6 +63,7 @@ class SO3(LieGroup):
         result = vector_to_skew_symmetric(noise)
         return result
 
+    @override
     def metric(self, p: Tensor, v: Tensor, w: Tensor) -> Tensor:
         r"""Inner product
         $$<v, w>_p: \mathfrak{so}(3) \times \mathfrak{so}(3) \to \mathbb{R}$$ is the inner product at point $$p$$

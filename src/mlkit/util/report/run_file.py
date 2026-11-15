@@ -1,8 +1,6 @@
 import json
 import os
 
-from .core import get_reporter
-
 REPORT_RUN_FILE = "report_run.json"
 
 
@@ -44,16 +42,6 @@ def read_report_run(directory: str) -> tuple[str, str] | None:
     if not isinstance(backend, str) or not isinstance(run_id, str) or backend == "" or run_id == "":
         return None
     return backend, run_id
-
-
-def persist_report_run(directory: str) -> None:
-    """Write the current reporter's run id into ``directory`` when one is open."""
-    reporter = get_reporter()
-    backend = getattr(reporter, "backend", None)
-    run_id = getattr(reporter, "run_id", None)
-    if not isinstance(backend, str) or not isinstance(run_id, str) or run_id == "":
-        return
-    write_report_run(directory, backend=backend, run_id=run_id)
 
 
 def resume_run_id(checkpoint_dir: str | None, backend: str) -> str | None:

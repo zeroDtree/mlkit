@@ -58,7 +58,7 @@ def cache_to_disk(root_datadir="cached_dataset", exclude_first_arg=False):
     return decorator
 
 
-def timer(format="ms"):
+def timer(format="ms"):  # noqa: ARG001
     """Timer the execution time of a function
 
     Args:

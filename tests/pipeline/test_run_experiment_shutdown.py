@@ -8,8 +8,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from contextlib import contextmanager
-from typing import Any
+from typing import Any, cast
 from unittest.mock import MagicMock
 
 import pytest
@@ -17,7 +16,7 @@ import torch
 from omegaconf import DictConfig, OmegaConf
 
 from example.shared.runner import run_experiment
-from mlkit.util.report import NullReporter, defer_error, has_deferred_error
+from mlkit.util.failure import defer_error, has_deferred_error
 
 
 def _cfg() -> DictConfig:
@@ -83,12 +82,15 @@ def _install(
     accelerator.check_trigger.return_value = False
     accelerator.wait_for_everyone.side_effect = lambda: events.append("wait")
     accelerator.end_training.side_effect = lambda: events.append("end")
-    monkeypatch.setattr("accelerate.Accelerator", lambda *args, **kwargs: accelerator)
+    monkeypatch.setattr("accelerate.Accelerator", lambda *_args, **_kwargs: accelerator)
 
     class Pipeline:
         def __init__(self, **kwargs: Any) -> None:
             del kwargs
             self._halt = False
+
+        def add_callbacks(self, callbacks: object) -> None:
+            del callbacks
 
         def train(self) -> None:
             events.append("train")
@@ -107,16 +109,16 @@ def _install(
                 configs.append(self)
 
     monkeypatch.setattr("mlkit.util.utils_for_main.get_train_class", lambda: (Pipeline, TrainingConfig))
-    monkeypatch.setattr("mlkit.util.utils_for_main.get_learing_rate_scheduler", lambda *args, **kwargs: MagicMock())
+    monkeypatch.setattr("mlkit.util.utils_for_main.get_learing_rate_scheduler", lambda *_args, **_kwargs: MagicMock())
     monkeypatch.setattr(
         "mlkit.util.log.get_logger",
-        lambda *args, **kwargs: logging.getLogger("mlkit.test.run_experiment_shutdown"),
+        lambda *_args, **_kwargs: logging.getLogger("mlkit.test.run_experiment_shutdown"),
     )
-    monkeypatch.setattr("mlkit.util.log.get_and_create_new_log_dir", lambda *args, **kwargs: "logs")
+    monkeypatch.setattr("mlkit.util.log.get_and_create_new_log_dir", lambda *_args, **_kwargs: "logs")
     return accelerator
 
 
-def _run(events: list[str], *, post_train_fn, after_train_fn=None):
+def _run(_events: list[str], *, post_train_fn, after_train_fn=None):
     model = torch.nn.Linear(1, 1)
 
     def get_model(cfg: DictConfig):
@@ -221,16 +223,23 @@ def test_post_train_error_stays_inside_reporter(monkeypatch: pytest.MonkeyPatch)
     seen: list[BaseException] = []
     _install(monkeypatch, events, is_main=True)
 
-    @contextmanager
-    def fake_open(*args, **kwargs):
-        del args, kwargs
-        try:
-            yield NullReporter()
-        except BaseException as exc:
-            seen.append(exc)
-            raise
+    class _Open:
+        def __enter__(self) -> "_Open":
+            return self
 
-    monkeypatch.setattr("mlkit.util.report.open_reporter", fake_open)
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+            del exc_type, tb
+            if isinstance(exc, BaseException):
+                seen.append(exc)
+
+        def store_config(self, config: object) -> None:
+            del config
+
+    def reporter_callback(*args: object, **kwargs: object) -> _Open:
+        del args, kwargs
+        return _Open()
+
+    monkeypatch.setattr("mlkit.util.report.reporter_callback", reporter_callback)
 
     def post_train(*args, **kwargs) -> None:
         del args, kwargs
@@ -317,20 +326,25 @@ def test_scheduler_rewrite_replaces_the_stored_config(monkeypatch: pytest.Monkey
 
     monkeypatch.setattr("mlkit.util.utils_for_main.get_learing_rate_scheduler", rewrite_scheduler)
 
-    class _RecordingReporter:
-        def report(self, data, *, step=None) -> None:
-            del data, step
+    class _Recording:
+        def __enter__(self) -> "_Recording":
+            return self
 
-        def store_config(self, config) -> None:
-            stored.append(config)
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+            del exc_type, exc, tb
 
-    @contextmanager
-    def fake_open(*args, **kwargs):
+        def store_config(self, config: object) -> None:
+            assert isinstance(config, dict)
+            stored.append(cast(dict[str, Any], config))
+
+    def reporter_callback(*args: object, **kwargs: object) -> _Recording:
         del args
-        opened.append(kwargs["config"])
-        yield _RecordingReporter()
+        config = kwargs["config"]
+        assert isinstance(config, dict)
+        opened.append(cast(dict[str, Any], config))
+        return _Recording()
 
-    monkeypatch.setattr("mlkit.util.report.open_reporter", fake_open)
+    monkeypatch.setattr("mlkit.util.report.reporter_callback", reporter_callback)
 
     def post_train(*args, **kwargs) -> None:
         del args, kwargs
@@ -422,7 +436,7 @@ def test_reporter_open_error_destroys_group_without_training(monkeypatch: pytest
         del args, kwargs
         raise RuntimeError("mlflow down")
 
-    monkeypatch.setattr("mlkit.util.report.open_reporter", open_reporter)
+    monkeypatch.setattr("mlkit.util.report.reporter_callback", open_reporter)
 
     def post_train(*args, **kwargs) -> None:
         del args, kwargs
@@ -450,7 +464,7 @@ def test_end_training_error_keeps_the_reporter_open_error(monkeypatch: pytest.Mo
         del args, kwargs
         raise RuntimeError("mlflow down")
 
-    monkeypatch.setattr("mlkit.util.report.open_reporter", open_reporter)
+    monkeypatch.setattr("mlkit.util.report.reporter_callback", open_reporter)
 
     def post_train(*args, **kwargs) -> None:
         del args, kwargs
@@ -501,7 +515,7 @@ def test_reporter_open_error_sets_the_trigger(monkeypatch: pytest.MonkeyPatch):
         del args, kwargs
         raise RuntimeError("mlflow down")
 
-    monkeypatch.setattr("mlkit.util.report.open_reporter", open_reporter)
+    monkeypatch.setattr("mlkit.util.report.reporter_callback", open_reporter)
 
     def post_train(*args, **kwargs) -> None:
         del args, kwargs
@@ -524,7 +538,7 @@ def test_other_rank_stops_when_reporter_open_fails(monkeypatch: pytest.MonkeyPat
         events.append("open")
         raise AssertionError("non-main rank opened the reporter")
 
-    monkeypatch.setattr("mlkit.util.report.open_reporter", open_reporter)
+    monkeypatch.setattr("mlkit.util.report.reporter_callback", open_reporter)
 
     def post_train(*args, **kwargs) -> None:
         del args, kwargs
@@ -550,7 +564,7 @@ def test_local_main_that_is_not_global_main_skips_the_reporter(monkeypatch: pyte
         events.append("open")
         raise AssertionError("local main opened the reporter")
 
-    monkeypatch.setattr("mlkit.util.report.open_reporter", open_reporter)
+    monkeypatch.setattr("mlkit.util.report.reporter_callback", open_reporter)
 
     def post_train(*args, **kwargs) -> None:
         del args, kwargs

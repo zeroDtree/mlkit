@@ -3,6 +3,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from .callback import ReportCallback
 from .data import _finite_metrics, _plain_data
 
 
@@ -42,8 +43,8 @@ def _prepare_artifact_dir(artifact_location: str) -> None:
         Path(artifact_location).mkdir(parents=True, exist_ok=True)
 
 
-class MLflowReporter:
-    """Reporter that writes a run to MLflow Tracking.
+class MLflowCallback(ReportCallback):
+    """Callback that writes a run to MLflow Tracking.
 
     Finite numbers go to ``log_metrics``. The resolved config is stored as a
     ``config.yaml`` artifact. Other values are left for the text logger.
@@ -68,7 +69,7 @@ class MLflowReporter:
         run_id: str | None = None,
         artifact_location: str | None = None,
     ):
-        """Initialize the reporter.
+        """Initialize the callback.
 
         Args:
             tracking_uri: MLflow tracking URI. ``None`` keeps
@@ -90,7 +91,7 @@ class MLflowReporter:
         self.artifact_location = artifact_location or None
         self._started = False
 
-    def __enter__(self) -> "MLflowReporter":
+    def __enter__(self) -> "MLflowCallback":
         import mlflow
 
         if self.tracking_uri:
@@ -147,7 +148,7 @@ class MLflowReporter:
 
         mlflow.log_dict(_plain_data(self.config), "config.yaml")
 
-    def report(self, data: Mapping[str, Any], *, step: int | None = None) -> None:
+    def log(self, data: Mapping[str, Any], *, step: int | None = None) -> None:
         """Write finite numeric values as MLflow metrics.
 
         Args:

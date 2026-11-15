@@ -278,24 +278,24 @@ if __name__ == "__main__":
         max_retries: int = 2
         last_error: str | None = None
 
-    def can_retry(ctx: TaskContext, event: TaskEvent) -> bool:
+    def can_retry(ctx: TaskContext, _event: TaskEvent) -> bool:
         return ctx.retry_count < ctx.max_retries
 
-    def increment_retry(ctx: TaskContext, event: TaskEvent) -> None:
+    def increment_retry(ctx: TaskContext, _event: TaskEvent) -> None:
         ctx.retry_count += 1
         print(f"[action] retry {ctx.task_id} ({ctx.retry_count}/{ctx.max_retries})")
 
     def log_enter(ctx: TaskContext, event: TaskEvent) -> None:
         print(f"[enter] {event.name} -> running task {ctx.task_id}")
 
-    def log_exit(ctx: TaskContext, event: TaskEvent) -> None:
+    def log_exit(_ctx: TaskContext, event: TaskEvent) -> None:
         print(f"[exit] leaving failed after {event.name}")
 
     def log_state_change(
         from_state: TaskState,
         to_state: TaskState,
         event: TaskEvent,
-        ctx: TaskContext,
+        _ctx: TaskContext,
     ) -> None:
         print(f"[change] {from_state.name} --({event.name})--> {to_state.name}")
 

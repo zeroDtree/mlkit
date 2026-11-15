@@ -11,8 +11,10 @@ class CallbackEvent(Enum):
     EPOCH_END = "epoch_end"
     STEP_START = "step_start"
     STEP_END = "step_end"
+    LOG = "log"
     # save, load
     PRE_SAVE = "pre_save"
+    PRE_FINALIZE_SAVE = "pre_finalize_save"
     POST_SAVE = "post_save"
     PRE_LOAD = "pre_load"
     POST_LOAD = "post_load"

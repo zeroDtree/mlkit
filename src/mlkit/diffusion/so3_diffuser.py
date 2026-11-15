@@ -1,4 +1,4 @@
-from typing import Any, Callable, Tuple, cast
+from typing import Any, Callable, Tuple, cast, override
 
 import torch
 from torch import Tensor
@@ -141,13 +141,14 @@ class SO3Diffuser(LieGroupDiffuser):
         rotation_matrix = self.so3.exp(v=rotation_skew_symmetric)
         return rotation_matrix
 
+    @override
     def forward_process(
         self,
         x_0: Tensor,
         discrete_t: Tensor,
         mask: Tensor,
-        *args: Any,
-        **kwargs: Any,
+        *_args: Any,
+        **_kwargs: Any,
     ) -> dict:
         r"""Forward process
 
@@ -183,7 +184,7 @@ class SO3Diffuser(LieGroupDiffuser):
         x_t = self.so3.multiply(rotation_matrix, x_0)  # (*macro_shape, n, 3, 3)
         return {"x_t": x_t}
 
-    def get_ground_truth_score(self, x_0: Tensor, x_t: Tensor, discrete_t: Tensor, padding_mask: Tensor) -> Tensor:
+    def get_ground_truth_score(self, x_0: Tensor, x_t: Tensor, discrete_t: Tensor, padding_mask: Tensor) -> Tensor:  # noqa: ARG002
         r"""Denoise Score Matching
 
         $$
@@ -215,7 +216,7 @@ class SO3Diffuser(LieGroupDiffuser):
         return ground_truth_score
 
     def compute_loss(
-        self, batch: dict[str, Any], *args: Any, **kwargs: Any
+        self, batch: dict[str, Any], *_args: Any, **_kwargs: Any
     ) -> dict:  # ty: ignore[invalid-method-override]
         x_0 = batch["x_0"]
         padding_mask = batch["padding_mask"]
@@ -234,8 +235,8 @@ class SO3Diffuser(LieGroupDiffuser):
         x_t: Tensor,
         discrete_t: Tensor,
         padding_mask: Tensor | None = None,
-        *args: Any,
-        **kwargs: Any,
+        *_args: Any,
+        **_kwargs: Any,
     ) -> dict:
         r"""
         $$

@@ -46,10 +46,12 @@ indent-width = 4
 target-version = "py312"
 
 [lint]
-# Enable Pyflakes (`F`) and a subset of the pycodestyle (`E`) codes by default.
-# Unlike Flake8, Ruff doesn't enable pycodestyle warnings (`W`) or
-# McCabe complexity (`C901`) by default.
-select = ["E4", "E7", "E9", "F", "I"]
+# Enable Pyflakes (`F`), a subset of the pycodestyle (`E`) codes, and
+# flake8-unused-arguments (`ARG`). Unlike Flake8, Ruff doesn't enable
+# pycodestyle warnings (`W`) or McCabe complexity (`C901`) by default.
+# An unused argument is allowed when its name matches `dummy-variable-rgx`,
+# or when the function body is empty (docstring, `pass`, or `...`).
+select = ["E4", "E7", "E9", "F", "I", "ARG"]
 ignore = ["E741"]
 
 # Allow fix for all enabled rules (when `--fix`) is provided.

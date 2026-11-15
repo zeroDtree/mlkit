@@ -100,7 +100,7 @@ def get_model(cfg: DictConfig, model=None, final_model_ckpt_path=None):
         discriminator=MoonsDiscriminator(h=cfg.gan.hidden_dim),
     )
     pipeline_model = ModelForPipeline(model=gan)
-    pipeline_model.register_hooks([build_gan_metrics_hook(log_interval=cfg.log.log_steps)])
+    pipeline_model.register_hooks([build_gan_metrics_hook()])
 
     if final_model_ckpt_path is not None and final_model_ckpt_path != "":
         pipeline_model = cast(ModelForPipeline, load_checkpoint(pipeline_model, final_model_ckpt_path))

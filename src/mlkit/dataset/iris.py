@@ -47,7 +47,7 @@ class IrisDataset(Dataset):
         return self.x[item], self.y[item]
 
 
-def get_iris_dataset(test_ratio=0.2, **kwargs):
+def get_iris_dataset(test_ratio=0.2, **_kwargs):
     dataset = IrisDataset()
     num_samples = len(dataset)
     train_size = int((1 - test_ratio) * num_samples)

@@ -1,128 +1,34 @@
-"""Reporter routing, the optional text logger, and the MLflow and wandb adapters."""
+"""Report callbacks for the MLflow and wandb adapters."""
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, cast
 
 import pytest
 
+from mlkit.pipeline.callback import CallbackEvent
 from mlkit.pipeline.pipeline import latest_checkpoint_dir
 from mlkit.util.report import (
-    MLflowReporter,
-    NullReporter,
-    WandbReporter,
-    clear_deferred_error,
-    has_deferred_error,
-    open_reporter,
-    persist_report_run,
-    raise_deferred_error,
-    report,
+    MLflowCallback,
+    NullReportCallback,
+    ReportCallback,
+    WandbCallback,
+    reporter_callback,
     resume_run_id,
-    use_reporter,
     write_report_run,
 )
 
 
-class RecordingReporter:
-    def __init__(self):
-        self.calls: list[tuple[dict[str, Any], int | None]] = []
-
-    def report(self, data: Mapping[str, Any], *, step: int | None = None) -> None:
-        self.calls.append((dict(data), step))
-
-
-def test_report_with_logger_writes_backend_and_text(caplog):
-    recorder = RecordingReporter()
-    logger = logging.getLogger("mlkit.test.reporter.echo")
-    logger.setLevel(logging.INFO)
-    with use_reporter(recorder):
-        with caplog.at_level(logging.INFO, logger=logger.name):
-            report({"loss": 1.5, "note": "x"}, step=3, logger=logger)
-
-    assert recorder.calls == [({"loss": 1.5, "note": "x"}, 3)]
-    messages = [record.message for record in caplog.records if record.name == logger.name]
-    assert messages == ["step=3 loss=1.5 note=x"]
-
-
-def test_report_without_logger_writes_backend_only(caplog):
-    recorder = RecordingReporter()
-    with use_reporter(recorder):
-        with caplog.at_level(logging.INFO):
-            report({"loss": 1.0}, step=1)
-
-    assert recorder.calls == [({"loss": 1.0}, 1)]
-    assert caplog.records == []
-
-
-def test_use_reporter_resets_after_exception():
-    outer = RecordingReporter()
-    inner = RecordingReporter()
-    with use_reporter(outer):
-        with pytest.raises(RuntimeError, match="boom"):
-            with use_reporter(inner):
-                raise RuntimeError("boom")
-        report({"loss": 1.0}, step=0)
-    report({"loss": 2.0}, step=1)
-
-    assert inner.calls == []
-    assert outer.calls == [({"loss": 1.0}, 0)]
-
-
-def test_null_reporter_still_writes_text(caplog):
-    logger = logging.getLogger("mlkit.test.reporter.null")
-    logger.setLevel(logging.INFO)
-    with use_reporter(NullReporter()):
-        with caplog.at_level(logging.INFO, logger=logger.name):
-            report({"loss": 0.25}, step=2, logger=logger)
-
-    messages = [record.message for record in caplog.records if record.name == logger.name]
-    assert messages == ["step=2 loss=0.25"]
-
-
-class _BoomReporter:
-    def __init__(self, message: str) -> None:
-        self.message = message
-
-    def report(self, data: Mapping[str, Any], *, step: int | None = None) -> None:
-        del data, step
-        raise RuntimeError(self.message)
-
-
-def test_report_defer_keeps_the_first_error_and_writes_text(caplog):
-    logger = logging.getLogger("mlkit.test.reporter.defer")
-    logger.setLevel(logging.INFO)
-    try:
-        with use_reporter(_BoomReporter("backend 1.0")):
-            with caplog.at_level(logging.INFO, logger=logger.name):
-                report({"loss": 1.0}, step=3, logger=logger, on_error="defer")
-        with use_reporter(_BoomReporter("backend 2.0")):
-            report({"loss": 2.0}, step=4, logger=logger, on_error="defer")
-
-        assert has_deferred_error()
-        messages = [record.message for record in caplog.records if record.name == logger.name]
-        assert "step=3 loss=1.0" in messages
-        assert any(message == "report failed: backend 1.0" for message in messages)
-        with pytest.raises(RuntimeError, match="backend 1.0"):
-            raise_deferred_error()
-        assert not has_deferred_error()
-    finally:
-        clear_deferred_error()
-
-
-def test_report_raise_is_the_default():
-    with use_reporter(_BoomReporter("backend")):
-        with pytest.raises(RuntimeError, match="backend"):
-            report({"loss": 1.0}, step=1)
-    assert not has_deferred_error()
-
-
-def test_open_reporter_rejects_unknown_kind():
+def test_reporter_callback_rejects_unknown_kind():
     with pytest.raises(ValueError, match="Unknown reporter"):
-        with open_reporter("nope", run_name="run", config={}):
-            pass
+        reporter_callback("nope", run_name="run", config={})
+
+
+def test_report_callback_cannot_be_constructed():
+    with pytest.raises(TypeError):
+        ReportCallback()
 
 
 class _FakeMlflow:
@@ -167,7 +73,7 @@ def test_mlflow_reporter_defaults_to_sqlite_without_env(monkeypatch):
     monkeypatch.setitem(sys.modules, "mlflow", cast(Any, fake))
     monkeypatch.delenv("MLFLOW_TRACKING_URI", raising=False)
 
-    with MLflowReporter(tracking_uri=None, experiment="local", run_name="run", config={"a": 1}):
+    with MLflowCallback(tracking_uri=None, experiment="local", run_name="run", config={"a": 1}):
         pass
 
     assert ("uri", "sqlite:///mlflow.db") in fake.calls
@@ -182,7 +88,7 @@ def test_mlflow_reporter_keeps_tracking_uri_env(monkeypatch):
     monkeypatch.setitem(sys.modules, "mlflow", cast(Any, fake))
     monkeypatch.setenv("MLFLOW_TRACKING_URI", "http://127.0.0.1:5000")
 
-    with MLflowReporter(tracking_uri=None, experiment="remote", run_name="run", config={}):
+    with MLflowCallback(tracking_uri=None, experiment="remote", run_name="run", config={}):
         pass
 
     assert not any(call[0] == "uri" for call in fake.calls)
@@ -202,7 +108,7 @@ def test_mlflow_log_dict_failure_ends_the_run(monkeypatch):
     monkeypatch.delenv("MLFLOW_TRACKING_URI", raising=False)
 
     with pytest.raises(RuntimeError, match="artifact down"):
-        with MLflowReporter(tracking_uri=None, experiment="local", run_name="run", config={"a": 1}):
+        with MLflowCallback(tracking_uri=None, experiment="local", run_name="run", config={"a": 1}):
             pass
 
     assert _ended_failed(fake.calls)
@@ -217,7 +123,7 @@ def test_mlflow_empty_run_id_ends_the_run(monkeypatch):
     monkeypatch.delenv("MLFLOW_TRACKING_URI", raising=False)
 
     with pytest.raises(RuntimeError, match="did not start a run"):
-        with MLflowReporter(tracking_uri=None, experiment="local", run_name="run", config={}):
+        with MLflowCallback(tracking_uri=None, experiment="local", run_name="run", config={}):
             pass
 
     assert _ended_failed(fake.calls)
@@ -232,7 +138,7 @@ def test_mlflow_start_run_failure_does_not_end_the_run(monkeypatch):
     monkeypatch.delenv("MLFLOW_TRACKING_URI", raising=False)
 
     with pytest.raises(RuntimeError, match="tracking down"):
-        with MLflowReporter(tracking_uri=None, experiment="local", run_name="run", config={}):
+        with MLflowCallback(tracking_uri=None, experiment="local", run_name="run", config={}):
             pass
 
     assert not any(call[0] == "end" for call in fake.calls)
@@ -245,7 +151,7 @@ def test_mlflow_store_config_replaces_the_artifact(monkeypatch):
     monkeypatch.setitem(sys.modules, "mlflow", cast(Any, fake))
     monkeypatch.delenv("MLFLOW_TRACKING_URI", raising=False)
 
-    with MLflowReporter(
+    with MLflowCallback(
         tracking_uri=None,
         experiment="local",
         run_name="run",
@@ -266,17 +172,16 @@ def test_mlflow_reporter_sqlite_store(tmp_path):
     tracking_uri = f"sqlite:///{tmp_path / 'mlflow.db'}"
     artifact_location = tmp_path / "mlruns"
     with (
-        MLflowReporter(
+        MLflowCallback(
             tracking_uri=tracking_uri,
             experiment="unit",
             run_name="run-a",
             config={"lr": 0.1, "nested": {"a": 1}},
             artifact_location=str(artifact_location),
         ) as mlflow_reporter,
-        use_reporter(mlflow_reporter),
     ):
-        report({"loss": 1.0, "bad": float("nan"), "name": "skip"}, step=0)
-        report({"loss": 0.5}, step=1)
+        mlflow_reporter.log({"loss": 1.0, "bad": float("nan"), "name": "skip"}, step=0)
+        mlflow_reporter.log({"loss": 0.5}, step=1)
 
     mlflow.set_tracking_uri(tracking_uri)
     experiment = mlflow.get_experiment_by_name("unit")
@@ -339,7 +244,7 @@ def test_wandb_reporter_calls_init_log_finish(monkeypatch):
     monkeypatch.setitem(sys.modules, "wandb", cast(Any, fake_wandb))
 
     with (
-        WandbReporter(
+        WandbCallback(
             project="p",
             name="n",
             group="g",
@@ -348,9 +253,8 @@ def test_wandb_reporter_calls_init_log_finish(monkeypatch):
             reinit=True,
             config={"a": 1},
         ) as wandb_reporter,
-        use_reporter(wandb_reporter),
     ):
-        report({"loss": 0.2}, step=4)
+        wandb_reporter.log({"loss": 0.2}, step=4)
 
     events = fake_wandb.events
     assert events[0][0] == "init"
@@ -374,7 +278,7 @@ def test_wandb_reporter_finish_marks_failure(monkeypatch):
     monkeypatch.setitem(sys.modules, "wandb", cast(Any, fake_wandb))
 
     with pytest.raises(RuntimeError, match="boom"):
-        with WandbReporter(
+        with WandbCallback(
             project="p",
             name="n",
             group=None,
@@ -401,7 +305,7 @@ def test_wandb_empty_run_id_finishes(monkeypatch):
     monkeypatch.setitem(sys.modules, "wandb", cast(Any, fake_wandb))
 
     with pytest.raises(RuntimeError, match="did not start a run"):
-        with WandbReporter(
+        with WandbCallback(
             project="p",
             name="n",
             group=None,
@@ -428,7 +332,7 @@ def test_wandb_init_failure_does_not_finish(monkeypatch):
     monkeypatch.setitem(sys.modules, "wandb", cast(Any, fake_wandb))
 
     with pytest.raises(RuntimeError, match="wandb down"):
-        with WandbReporter(
+        with WandbCallback(
             project="p",
             name="n",
             group=None,
@@ -448,7 +352,7 @@ def test_wandb_store_config_replaces_the_run_config(monkeypatch):
     fake_wandb = _FakeWandb()
     monkeypatch.setitem(sys.modules, "wandb", cast(Any, fake_wandb))
 
-    with WandbReporter(
+    with WandbCallback(
         project="p",
         name="n",
         group=None,
@@ -468,7 +372,7 @@ def test_wandb_reporter_resumes_with_allow(monkeypatch):
     fake_wandb = _FakeWandb()
     monkeypatch.setitem(sys.modules, "wandb", cast(Any, fake_wandb))
 
-    with WandbReporter(
+    with WandbCallback(
         project="p",
         name="n",
         group=None,
@@ -490,7 +394,7 @@ def test_mlflow_reporter_artifact_location(tmp_path):
 
     tracking_uri = f"sqlite:///{tmp_path / 'mlflow.db'}"
     artifact_location = tmp_path / "mlruns"
-    with MLflowReporter(
+    with MLflowCallback(
         tracking_uri=tracking_uri,
         experiment="placed",
         run_name="run-a",
@@ -505,7 +409,7 @@ def test_mlflow_reporter_artifact_location(tmp_path):
     assert Path(experiment.artifact_location).resolve() == artifact_location.resolve()
     assert any(path.name == "config.yaml" for path in artifact_location.rglob("config.yaml"))
 
-    with MLflowReporter(
+    with MLflowCallback(
         tracking_uri=tracking_uri,
         experiment="placed",
         run_name="run-b",
@@ -527,21 +431,20 @@ def test_mlflow_reporter_resumes_same_run(tmp_path):
     tracking_uri = f"sqlite:///{tmp_path / 'mlflow.db'}"
     artifact_location = tmp_path / "mlruns"
     with (
-        MLflowReporter(
+        MLflowCallback(
             tracking_uri=tracking_uri,
             experiment="unit",
             run_name="run-a",
             config={"lr": 0.1},
             artifact_location=str(artifact_location),
         ) as first,
-        use_reporter(first),
     ):
-        report({"loss": 1.0}, step=0)
+        first.log({"loss": 1.0}, step=0)
         run_id = first.run_id
 
     assert isinstance(run_id, str)
     with (
-        MLflowReporter(
+        MLflowCallback(
             tracking_uri=tracking_uri,
             experiment="unit",
             run_name="run-a",
@@ -549,10 +452,9 @@ def test_mlflow_reporter_resumes_same_run(tmp_path):
             run_id=run_id,
             artifact_location=str(artifact_location),
         ) as second,
-        use_reporter(second),
     ):
         assert second.run_id == run_id
-        report({"loss": 0.5}, step=1)
+        second.log({"loss": 0.5}, step=1)
 
     mlflow.set_tracking_uri(tracking_uri)
     experiment = mlflow.get_experiment_by_name("unit")
@@ -584,6 +486,11 @@ def test_report_run_file_follows_latest_checkpoint_and_backend(tmp_path):
 
     empty = tmp_path / "checkpoint_epoch0_step30_global30"
     empty.mkdir()
-    with use_reporter(NullReporter()):
-        persist_report_run(str(empty))
+    NullReportCallback().on_event(CallbackEvent.PRE_FINALIZE_SAVE, checkpoint_dir=str(empty))
     assert resume_run_id(str(empty), "mlflow") is None
+
+    recorded = NullReportCallback()
+    recorded.backend = "mlflow"
+    recorded.run_id = "kept"
+    recorded.on_event(CallbackEvent.PRE_FINALIZE_SAVE, checkpoint_dir=str(empty))
+    assert resume_run_id(str(empty), "mlflow") == "kept"

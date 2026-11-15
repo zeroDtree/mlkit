@@ -17,7 +17,7 @@ class RiemannianManifoldDiffuserConfig(BaseDiffuserConfig):
         ndim_micro_shape: int,
         n_discretization_steps: int,
         n_inference_steps: int,
-        *args: Any,
+        *_args: Any,
         **kwargs: Any,
     ):
         super().__init__(

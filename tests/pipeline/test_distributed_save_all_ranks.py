@@ -28,7 +28,7 @@ from mlkit.pipeline.distributed_pipeline import (  # noqa: E402
     DistributedTrainingConfig,
 )
 from mlkit.pipeline.pipeline import LogConfig, TrainingState  # noqa: E402
-from mlkit.util.report import (  # noqa: E402
+from mlkit.util.failure import (  # noqa: E402
     clear_deferred_error,
     defer_error,
     has_deferred_error,
@@ -100,11 +100,11 @@ def _make_stub_accelerator(*, is_main_process: bool) -> MagicMock:
 def _bind_accelerator(monkeypatch: pytest.MonkeyPatch, accelerator: MagicMock) -> None:
     monkeypatch.setattr(
         "mlkit.pipeline.distributed_pipeline.Accelerator",
-        lambda *args, **kwargs: accelerator,
+        lambda *_args, **_kwargs: accelerator,
     )
     monkeypatch.setattr(
         "mlkit.pipeline.distributed_pipeline.accelerate.utils.set_seed",
-        lambda *args, **kwargs: None,
+        lambda *_args, **_kwargs: None,
     )
 
 
@@ -117,7 +117,7 @@ def _training_pipeline(
 ) -> TinyDistributedPipeline:
     model = TinyModel()
     optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
-    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda step: 1.0)
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda _step: 1.0)
     config = DistributedTrainingConfig(
         n_epochs=1,
         batch_size=2,
@@ -149,17 +149,17 @@ def test_save_calls_save_state_on_non_main_process(monkeypatch):
     # Bypass real Accelerator construction in DistributedPipeline.__init__.
     monkeypatch.setattr(
         "mlkit.pipeline.distributed_pipeline.Accelerator",
-        lambda *args, **kwargs: accelerator,
+        lambda *_args, **_kwargs: accelerator,
     )
     monkeypatch.setattr(
         "mlkit.pipeline.distributed_pipeline.accelerate.utils.set_seed",
-        lambda *args, **kwargs: None,
+        lambda *_args, **_kwargs: None,
     )
 
     with tempfile.TemporaryDirectory() as tmp:
         model = TinyModel()
         optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
-        scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda step: 1.0)
+        scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda _step: 1.0)
         config = DistributedTrainingConfig(
             n_epochs=1,
             batch_size=2,
@@ -195,17 +195,17 @@ def test_main_process_checkpoint_write_failure_is_deferred(monkeypatch):
     accelerator = _make_stub_accelerator(is_main_process=True)
     monkeypatch.setattr(
         "mlkit.pipeline.distributed_pipeline.Accelerator",
-        lambda *args, **kwargs: accelerator,
+        lambda *_args, **_kwargs: accelerator,
     )
     monkeypatch.setattr(
         "mlkit.pipeline.distributed_pipeline.accelerate.utils.set_seed",
-        lambda *args, **kwargs: None,
+        lambda *_args, **_kwargs: None,
     )
 
     with tempfile.TemporaryDirectory() as tmp:
         model = TinyModel()
         optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
-        scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda step: 1.0)
+        scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda _step: 1.0)
         config = DistributedTrainingConfig(
             n_epochs=1,
             batch_size=2,
@@ -228,11 +228,13 @@ def test_main_process_checkpoint_write_failure_is_deferred(monkeypatch):
         pipeline.accelerator = accelerator
         pipeline.training_state = TrainingState(current_epoch=0, current_step_in_epoch=1, current_global_step=1)
 
-        def fail_persist(directory: str) -> None:
-            del directory
-            raise OSError("disk full")
+        class FailCheckpoint(BaseCallback):
+            def on_event(self, event: CallbackEvent, *args, **kwargs) -> None:
+                del args, kwargs
+                if event is CallbackEvent.PRE_FINALIZE_SAVE:
+                    raise OSError("disk full")
 
-        monkeypatch.setattr("mlkit.pipeline.pipeline.persist_report_run", fail_persist)
+        pipeline.add_callbacks([FailCheckpoint()])
         try:
             pipeline.save()
             accelerator.save_state.assert_called_once()
@@ -290,11 +292,12 @@ def test_halted_save_failure_skips_post_save(monkeypatch: pytest.MonkeyPatch):
     accelerator = _make_stub_accelerator(is_main_process=True)
     _bind_accelerator(monkeypatch, accelerator)
 
-    def fail_persist(directory: str) -> None:
-        del directory
-        raise OSError("disk full")
+    class FailCheckpoint(BaseCallback):
+        def on_event(self, event: CallbackEvent, *args, **kwargs) -> None:
+            del args, kwargs
+            if event is CallbackEvent.PRE_FINALIZE_SAVE:
+                raise OSError("disk full")
 
-    monkeypatch.setattr("mlkit.pipeline.pipeline.persist_report_run", fail_persist)
     with tempfile.TemporaryDirectory() as tmp:
         pipeline = _training_pipeline(
             accelerator,
@@ -302,7 +305,7 @@ def test_halted_save_failure_skips_post_save(monkeypatch: pytest.MonkeyPatch):
             logger=logging.getLogger("mlkit.test.save_fail_post"),
         )
         events = _EventLog()
-        pipeline.add_callbacks([events])
+        pipeline.add_callbacks([events, FailCheckpoint()])
         pipeline._halt = True
         try:
             pipeline.save()
@@ -484,7 +487,7 @@ def test_non_main_skips_save_when_main_sees_final_checkpoint(monkeypatch: pytest
     _bind_accelerator(monkeypatch, accelerator)
     with tempfile.TemporaryDirectory() as tmp:
         pipeline = _training_pipeline(accelerator, save_dir=tmp, logger=None)
-        pipeline._share_flag = lambda local: True  # type: ignore[method-assign]
+        pipeline._share_flag = lambda _local: True  # type: ignore[method-assign]
         pipeline.save()
         accelerator.save_state.assert_not_called()
         assert pipeline._halt is False

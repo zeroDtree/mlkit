@@ -25,7 +25,7 @@ class RectifiedFlowConfig(IndependentCFMFlowConfig):
         n_discretization_steps: int,
         ndim_micro_shape: int = 2,
         n_inference_steps: int | None = None,
-        *args: Any,
+        *_args: Any,
         **kwargs: Any,
     ) -> None:
         super().__init__(
@@ -62,11 +62,11 @@ class RectifiedFlow(IndependentCFMFlow):
         self,
         x_known,
         x_t,
-        t,
-        padding_mask,
+        t,  # noqa: ARG002
+        padding_mask,  # noqa: ARG002
         inpainting_mask,
         x_prior,
-        *args,
+        *_args,
         **kwargs,
     ) -> Tensor:
         device = x_t.device
@@ -228,7 +228,7 @@ class RectifiedFlow(IndependentCFMFlow):
         x_t: Tensor,
         t: Tensor,
         padding_mask: Tensor | None = None,
-        *args: Any,
+        *_args: Any,
         **kwargs: Any,
     ) -> dict:
         device = x_t.device
@@ -275,7 +275,7 @@ class RectifiedFlow(IndependentCFMFlow):
         return_all=False,
         sampling_condition=None,
         sapmling_condition_key="sampling_condition",
-        *args,
+        *_args,
         **kwargs,
     ) -> dict:
         x_0 = self.prior_sampling(shape).to(device)
@@ -311,7 +311,7 @@ class RectifiedFlow(IndependentCFMFlow):
         sapmling_condition_key="sapmling_condition",
         return_all=False,
         sampling_condition=None,
-        *args,
+        *_args,
         **kwargs,
     ) -> dict:
         x_1 = x

@@ -28,7 +28,7 @@ def get_regular_language_dataset(
     data_size=100,
     limit=100,
     test_ratio=0.2,
-    **kwargs,
+    **_kwargs,
 ):
     dataset = RegularLanguageDataset(regex_pattern, max_len=max_len, data_size=data_size, limit=limit)
     num_samples = len(dataset)

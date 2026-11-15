@@ -1,6 +1,7 @@
 import abc
 import functools
 from typing import Callable, Tuple
+from typing import override as typing_override
 
 import torch
 from overrides import override
@@ -40,6 +41,7 @@ class Predictor(abc.ABC):
 class NonePredictor(Predictor):
     def __init__(self, sde: SDE, score_fn: Callable[..., Tensor], use_probability_flow: bool = False): ...
 
+    @typing_override
     def update_fn(self, x, t, mask=None):
         return x, x
 

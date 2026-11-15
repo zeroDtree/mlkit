@@ -1,4 +1,4 @@
-from typing import Any, Callable, Literal, Optional, Tuple, cast
+from typing import Any, Callable, Literal, Optional, Tuple, cast, override
 
 import torch
 from torch import Tensor
@@ -26,15 +26,15 @@ class EuclideanDDPMConfig(EuclideanDiffuserConfig):
         self,
         n_discretization_steps: int = 1000,
         ndim_micro_shape: int = 2,
-        use_probability_flow=False,
+        use_probability_flow=False,  # noqa: ARG002
         use_clip: bool = False,
         clip_sample_range: float = 1.0,
         use_dyn_thresholding: bool = False,
         dynamic_thresholding_ratio=0.995,
         sample_max_value: float = 1.0,
         betas=None,
-        *args,
-        **kwargs,
+        *_args,
+        **_kwargs,
     ):
         r"""
         Args:
@@ -181,7 +181,7 @@ class EuclideanDDPMDiffuser(EuclideanDiffuser):
             "batch": batch,
         }
 
-    def q_xt_x_0(self, x_0: Tensor, t: Tensor, mask: Tensor) -> Tuple[Tensor, Tensor]:
+    def q_xt_x_0(self, x_0: Tensor, t: Tensor, mask: Tensor) -> Tuple[Tensor, Tensor]:  # noqa: ARG002
         r"""Forward process
 
         $$
@@ -211,6 +211,7 @@ class EuclideanDDPMDiffuser(EuclideanDiffuser):
         alpha_bar = config.alphas_cumprod[t.clamp(min=0)]
         return torch.where(t < 0, torch.ones_like(alpha_bar), alpha_bar)
 
+    @override
     def forward_process(
         self,
         x_start: Tensor,
@@ -218,7 +219,7 @@ class EuclideanDDPMDiffuser(EuclideanDiffuser):
         t_b: Tensor,
         mask: Tensor,
         is_continuous_time: bool = False,
-        **kwargs: Any,
+        **_kwargs: Any,
     ) -> dict:
         """Diffuse ``x_start`` (valid at noise level ``t_a``) forward to ``t_b``.
 
@@ -249,7 +250,7 @@ class EuclideanDDPMDiffuser(EuclideanDiffuser):
         x_t: Tensor,
         t: Tensor,
         padding_mask: Tensor | None = None,
-        *args: Any,
+        *_args: Any,
         **kwargs: Any,
     ) -> dict:
         r"""
@@ -368,7 +369,7 @@ class EuclideanDDPMDiffuser(EuclideanDiffuser):
 
     def _get_variance(
         self,
-        t: int,
+        _t: int,
         alpha_prod_t: Tensor,
         alpha_prod_t_prev: Tensor,
         current_beta_t: Tensor,
@@ -380,7 +381,7 @@ class EuclideanDDPMDiffuser(EuclideanDiffuser):
         $$
 
         Args:
-            t (int): timestep
+            _t (int): timestep
             alpha_prod_t (Tensor): $\bar{\alpha}_t$
             alpha_prod_t_prev (Tensor): $\bar{\alpha}_{t-1}$
             current_beta_t (Tensor): $\beta_t$
@@ -393,6 +394,7 @@ class EuclideanDDPMDiffuser(EuclideanDiffuser):
         variance = torch.clamp(variance, min=1e-20)
         return variance
 
+    @override
     def get_posterior_mean_fn(
         self,
         score: Tensor | None = None,

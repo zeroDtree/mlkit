@@ -30,17 +30,11 @@ def build_ttur_optimizer(generator: Module, discriminator: Module, cfg: DictConf
     )
 
 
-def build_gan_metrics_hook(*, log_interval: int):
-    """Log d_loss / g_loss on POST_COMPUTE_LOSS (mirrors VAE metrics hook)."""
+def build_gan_metrics_hook():
+    """Attach d_loss / g_loss to the model output on POST_COMPUTE_LOSS."""
     from mlkit.util.hook.model_hook import ModelHook, ModelHookStageType
-    from mlkit.util.report import report
-
-    state = {"step": 0}
 
     def fn(model, batch, model_output, **kwargs):
-        state["step"] += 1
-        if log_interval <= 0 or state["step"] % log_interval != 0:
-            return
         stats: dict[str, float] = {"train/loss": float(model_output["loss"].item())}
         if "d_loss" in model_output:
             stats["train/d_loss"] = float(model_output["d_loss"].item())
@@ -48,7 +42,7 @@ def build_gan_metrics_hook(*, log_interval: int):
             stats["train/g_loss"] = float(model_output["g_loss"].item())
         if "r1" in model_output:
             stats["train/r1"] = float(model_output["r1"].item())
-        report(stats, step=state["step"], on_error="defer")
+        model_output["metrics"] = stats
 
     return ModelHook(name="gan_metrics", stage=ModelHookStageType.POST_COMPUTE_LOSS, fn=fn)
 

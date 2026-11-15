@@ -34,15 +34,18 @@ def run_experiment(
         get_collate_fn: ``(cfg) -> collate_fn``.
         post_train_fn: Optional ``(cfg, model_result, pipeline, accelerator,
             train_set) -> None`` called on the global main process after training.
-            The process group is destroyed before this runs. The reporter stays
-            open until this returns, so a failure here marks the run failed.
+            The process group is destroyed before this runs. The report callback
+            stays open until this returns, so a failure here marks the run failed.
         after_train_fn: Optional ``(cfg, model_result, pipeline, accelerator,
-            train_set) -> None`` called on every rank after training and before
+            train_set, report_callback) -> None`` called on every rank after
+            training and before
             the process group is destroyed. A failure here destroys the group
             and skips ``post_train_fn``. When the pipeline has already halted
             because a rank-local failure was shared, every rank skips this
             callback. ``_finish`` then destroys the group and raises that
-            failure on the rank that stored it.
+            failure on the rank that stored it. ``report_callback`` is the
+            report callback already entered on the global main process, or
+            ``None`` on other ranks.
         save_dir_suffix: Appended to the checkpoint save-directory name.
         disable_train_hooks: If True (default), disable ``train_hook_handlers``
             before training so the model trains unconditionally.  Set False for
@@ -56,15 +59,9 @@ def run_experiment(
     from omegaconf import OmegaConf
 
     from mlkit.pipeline.pipeline import LogConfig, latest_checkpoint_dir
+    from mlkit.util.failure import clear_deferred_error, raise_deferred_error
     from mlkit.util.log import get_and_create_new_log_dir, get_logger
-    from mlkit.util.report import (
-        clear_deferred_error,
-        open_reporter,
-        raise_deferred_error,
-        resume_run_id,
-        store_run_config,
-        use_reporter,
-    )
+    from mlkit.util.report import reporter_callback, resume_run_id
     from mlkit.util.seed import seed_everything
     from mlkit.util.show import show_info
     from mlkit.util.utils_for_main import (
@@ -82,6 +79,7 @@ def run_experiment(
 
     logger = None
     run_name = ""
+    report_callback = None
 
     def _train():
         # Build model; normalise to dict so downstream code is uniform.
@@ -99,7 +97,8 @@ def run_experiment(
         lr_scheduler = get_learing_rate_scheduler(optimizer, accelerator, train_set, cfg)
         if accelerator.is_main_process:
             effective_config = cast(dict[str, Any], OmegaConf.to_container(cfg, resolve=True))
-            store_run_config(effective_config)
+            if report_callback is not None:
+                report_callback.store_config(effective_config)
             if logger is not None:
                 logger.info("Config after scheduler rewrite:\n" + OmegaConf.to_yaml(cfg))
         show_info(model=model, optimizer=optimizer)
@@ -121,6 +120,8 @@ def run_experiment(
             collate_fn=get_collate_fn(cfg),
             logger=logger,
         )
+        if report_callback is not None:
+            pipeline.add_callbacks([report_callback])
         pipeline.train()
         return model_result, pipeline, train_set
 
@@ -129,7 +130,7 @@ def run_experiment(
         model_result, pipeline, train_set = trained
         # ``_halt`` is already the same on every rank: the training loop shared it.
         if after_train_fn is not None and not pipeline._halt:
-            after_train_fn(cfg, model_result, pipeline, accelerator, train_set)
+            after_train_fn(cfg, model_result, pipeline, accelerator, train_set, report_callback)
         return trained
 
     def _destroy_group() -> None:
@@ -152,8 +153,8 @@ def run_experiment(
         """Return whether any rank failed before training could start.
 
         Every rank calls this before ``prepare()``. The main process opens the
-        reporter first, and the other ranks wait in this collective. A failure
-        is shared so every rank can destroy the process group.
+        report callback first, and the other ranks wait in this collective. A
+        failure is shared so every rank can destroy the process group.
         """
         if accelerator.num_processes == 1:
             return open_error is not None
@@ -177,17 +178,15 @@ def run_experiment(
                 checkpoint_dir = latest_checkpoint_dir(
                     get_new_save_dir(cfg.train.save_dir, cfg, suffix=save_dir_suffix)
                 )
-                active_reporter = stack.enter_context(
-                    open_reporter(
-                        reporter_kind,
-                        run_name=run_name,
-                        config=resolved_config,
-                        mlflow=cast(dict[str, Any], OmegaConf.to_container(cfg.mlflow, resolve=True)),
-                        wandb=cast(dict[str, Any], OmegaConf.to_container(cfg.wandb, resolve=True)),
-                        resume_run_id=resume_run_id(checkpoint_dir, reporter_kind),
-                    )
+                report_callback = reporter_callback(
+                    reporter_kind,
+                    run_name=run_name,
+                    config=resolved_config,
+                    mlflow=cast(dict[str, Any], OmegaConf.to_container(cfg.mlflow, resolve=True)),
+                    wandb=cast(dict[str, Any], OmegaConf.to_container(cfg.wandb, resolve=True)),
+                    resume_run_id=resume_run_id(checkpoint_dir, reporter_kind),
                 )
-                stack.enter_context(use_reporter(active_reporter))
+                stack.enter_context(report_callback)
             except BaseException as exc:
                 open_error = exc
         if _reporter_open_failed(open_error):

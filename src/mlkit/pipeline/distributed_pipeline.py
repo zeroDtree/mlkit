@@ -11,7 +11,7 @@ from accelerate import Accelerator
 from accelerate.utils import DistributedDataParallelKwargs
 
 from ..util.decorators import inherit_docstrings
-from ..util.report import defer_error, has_deferred_error, report
+from ..util.failure import defer_error, has_deferred_error
 from .callback import BaseCallback, CallbackEvent
 from .pipeline import BasePipeline, LogConfig, TrainingConfig
 
@@ -172,7 +172,6 @@ class DistributedPipeline(BasePipeline):
         model: torch.nn.Module = self.model
         optimizer = self.optimizer
         scheduler = self.scheduler
-        logger = self.logger
         model.train()
 
         result = {}
@@ -203,12 +202,11 @@ class DistributedPipeline(BasePipeline):
         result["loss"] = loss.item()
         result["lr"] = scheduler.get_last_lr()[0]
         result["global_step"] = self.training_state.current_global_step
+        self._include_model_metrics(result, raw_loss)
 
-        # Only the global main process has a reporter. A backend failure is
-        # remembered, and every rank hears about it on a logging step.
-        if self._log_interval_due("steps") and self.accelerator.is_main_process and logger is not None:
-            report(result, step=self.training_state.current_global_step, logger=logger, on_error="defer")
+        # A backend failure is remembered. Every rank hears about it on a logging step.
         if self._log_interval_due("steps"):
+            self.log(result, step=self.training_state.current_global_step)
             self._sync_halt()
 
         self.trigger_callbacks(event=CallbackEvent.STEP_END, batch=batch)
@@ -249,7 +247,7 @@ class DistributedPipeline(BasePipeline):
 
         The rank that caught ``error`` remembers that exception. A failure on
         another rank leaves this process with ``error is None``. The main
-        process still remembers a peer failure, because the reporter and
+        process still remembers a peer failure, because the report callback and
         ``post_train`` only see the main process. The published checkpoint
         directory is left untouched.
 
@@ -322,7 +320,7 @@ class DistributedPipeline(BasePipeline):
                 ]:
                     file_path = os.path.join(temp_checkpoint_dir, f"{base_name}.pth")
                     torch.save(getattr(self, base_name), file_path)
-                self._persist_report_run(temp_checkpoint_dir)
+                self.trigger_callbacks(event=CallbackEvent.PRE_FINALIZE_SAVE, checkpoint_dir=temp_checkpoint_dir)
                 os.rename(temp_checkpoint_dir, final_checkpoint_dir)
                 if self.logger is not None:
                     self.logger.info(f"Model saved to {final_checkpoint_dir}")

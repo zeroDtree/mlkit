@@ -7,7 +7,7 @@ from ..util.decorators import cache_to_disk
 
 
 @cache_to_disk()
-def load_meta_math(max_tokens=666, num_samples=100000, eval_split_ratio=0.1, seed=31, **kwargs):
+def load_meta_math(max_tokens=666, num_samples=100000, eval_split_ratio=0.1, seed=31, **_kwargs):
     # total 395000 samples
     train_size = num_samples - eval_split_ratio * num_samples
     dataset = datasets.load_dataset("meta-math/MetaMathQA", split="train")
@@ -48,7 +48,7 @@ def load_meta_math(max_tokens=666, num_samples=100000, eval_split_ratio=0.1, see
 
 
 @cache_to_disk()
-def load_gsm8k(**kwargs):
+def load_gsm8k(**_kwargs):
     dataset = datasets.load_dataset("gsm8k", "main")
     dataset = dataset.map(
         lambda e: {
@@ -62,7 +62,7 @@ def load_gsm8k(**kwargs):
 
 
 @cache_to_disk()
-def load_sst2(**kwargs):
+def load_sst2(**_kwargs):
     dataset = datasets.load_dataset("glue", "sst2")
     instruction = "classify the sentiment of the text: "
     label_map = {0: "negative", 1: "positive", -1: "other"}
@@ -79,7 +79,7 @@ def load_sst2(**kwargs):
 
 
 @cache_to_disk("data_cache")
-def load_codefeedback(max_tokens=512, num_samples=100000, eval_split_ratio=0.1, seed=31, **kwargs):
+def load_codefeedback(max_tokens=512, num_samples=100000, eval_split_ratio=0.1, seed=31, **_kwargs):
     template_wo_input = """Below is an instruction that describes a task. Write a response that appropriately completes the request.
 
     ### Instruction:
@@ -131,7 +131,7 @@ def load_codefeedback(max_tokens=512, num_samples=100000, eval_split_ratio=0.1, 
 
 
 @cache_to_disk("data_cache")
-def load_wizardlm(max_tokens=512, num_samples=70000, eval_split_ratio=0.1, seed=31, **kwargs):
+def load_wizardlm(max_tokens=512, num_samples=70000, eval_split_ratio=0.1, seed=31, **_kwargs):
     template_wo_input = """Below is an instruction that describes a task. Write a response that appropriately completes the request.
 
     ### Instruction:
@@ -180,7 +180,7 @@ def load_wizardlm(max_tokens=512, num_samples=70000, eval_split_ratio=0.1, seed=
 
 
 @cache_to_disk("data_cache")
-def load_alpaca_gpt4(**kwargs):
+def load_alpaca_gpt4(**_kwargs):
     template_wo_input = """Below is an instruction that describes a task. Write a response that appropriately completes the request.
 
     ### Instruction:

@@ -1,45 +1,23 @@
-from collections.abc import Iterator, Mapping
-from contextlib import contextmanager
+from collections.abc import Mapping
 from typing import Any
 
-from .core import (
-    NullReporter,
-    Reporter,
-    clear_deferred_error,
-    defer_error,
-    get_reporter,
-    has_deferred_error,
-    raise_deferred_error,
-    report,
-    store_run_config,
-    use_reporter,
-)
-from .mlflow import MLflowReporter
-from .run_file import persist_report_run, resume_run_id, write_report_run
-from .wandb import WandbReporter
+from .callback import NullReportCallback, ReportCallback
+from .mlflow import MLflowCallback
+from .run_file import resume_run_id, write_report_run
+from .wandb import WandbCallback
 
 __all__ = [
-    "MLflowReporter",
-    "NullReporter",
-    "Reporter",
-    "WandbReporter",
-    "clear_deferred_error",
-    "defer_error",
-    "get_reporter",
-    "has_deferred_error",
-    "open_reporter",
-    "persist_report_run",
-    "raise_deferred_error",
-    "report",
+    "MLflowCallback",
+    "NullReportCallback",
+    "ReportCallback",
+    "WandbCallback",
+    "reporter_callback",
     "resume_run_id",
-    "store_run_config",
-    "use_reporter",
     "write_report_run",
 ]
 
 
-@contextmanager
-def open_reporter(
+def reporter_callback(
     kind: str,
     *,
     run_name: str,
@@ -47,8 +25,11 @@ def open_reporter(
     mlflow: Mapping[str, Any] | None = None,
     wandb: Mapping[str, Any] | None = None,
     resume_run_id: str | None = None,
-) -> Iterator[Reporter]:
-    """Open the reporter selected by ``kind``.
+) -> ReportCallback:
+    """Build the report callback selected by ``kind``.
+
+    The returned callback opens its run when entered and closes it when the
+    context exits. ``"none"`` returns a callback that discards every payload.
 
     Args:
         kind: ``"mlflow"``, ``"wandb"``, or ``"none"``.
@@ -60,19 +41,18 @@ def open_reporter(
             and ``reinit``.
         resume_run_id: existing run to continue. ``None`` starts a new run.
 
-    Yields:
-        The active reporter. The run is closed when the context exits.
+    Returns:
+        A callback that has not opened its run yet.
 
     Raises:
         ValueError: ``kind`` is not one of the known reporters.
     """
     kind_name = kind.strip().lower()
     if kind_name == "none":
-        yield NullReporter()
-        return
+        return NullReportCallback()
     if kind_name == "mlflow":
         settings = dict(mlflow or {})
-        reporter = MLflowReporter(
+        return MLflowCallback(
             tracking_uri=settings.get("tracking_uri") or None,
             experiment=str(settings.get("experiment") or "default"),
             run_name=run_name,
@@ -80,12 +60,9 @@ def open_reporter(
             run_id=resume_run_id,
             artifact_location=settings.get("artifact_location") or None,
         )
-        with reporter:
-            yield reporter
-        return
     if kind_name == "wandb":
         settings = dict(wandb or {})
-        reporter = WandbReporter(
+        return WandbCallback(
             project=settings.get("project"),
             name=run_name,
             group=settings.get("group"),
@@ -95,7 +72,4 @@ def open_reporter(
             config=config,
             run_id=resume_run_id,
         )
-        with reporter:
-            yield reporter
-        return
     raise ValueError(f"Unknown reporter: {kind}")

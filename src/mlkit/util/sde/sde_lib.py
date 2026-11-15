@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, override
 
 import numpy as np
 import torch
@@ -29,6 +29,7 @@ class VPSDE(SDE):
     def T(self) -> float:
         return 1
 
+    @override
     def get_drift_and_diffusion(self, x: Tensor, t: Tensor, mask=None) -> Tuple[Tensor, Tensor]:
         r"""continuous DDPM SDE
 
@@ -78,7 +79,7 @@ class VPSDE(SDE):
         b = torch.sqrt(1.0 - torch.exp(2.0 * log_mean_coeff))
         return a, b
 
-    def forward_process(self, x_0: Tensor, t: Tensor, mask: Optional[Tensor] = None) -> Dict[str, Tensor]:
+    def forward_process(self, x_0: Tensor, t: Tensor, mask: Optional[Tensor] = None) -> Dict[str, Tensor]:  # noqa: ARG002
         r"""
 
         $$
@@ -165,6 +166,7 @@ class SubVPSDE(SDE):
     def T(self) -> float:
         return 1
 
+    @override
     def get_drift_and_diffusion(self, x: Tensor, t: Tensor, mask=None) -> Tuple[Tensor, Tensor]:
         beta_t = self.beta_0 + t * (self.beta_1 - self.beta_0)
         macro_shape = x.shape[: -self.ndim_micro_shape]
@@ -174,7 +176,7 @@ class SubVPSDE(SDE):
         diffusion = torch.sqrt(beta_t * discount)
         return drift, diffusion
 
-    def marginal_prob(self, x, t, mask=None):
+    def marginal_prob(self, x, t, mask=None):  # noqa: ARG002
         log_mean_coeff = -0.25 * t**2 * (self.beta_1 - self.beta_0) - 0.5 * t * self.beta_0
         macro_shape = x.shape[: -self.ndim_micro_shape]
         log_mean_coeff = log_mean_coeff.view(*macro_shape, *[1 for _ in range(self.ndim_micro_shape)])
@@ -240,6 +242,7 @@ class VESDE(SDE):
     def T(self) -> float:
         return 1
 
+    @override
     def get_drift_and_diffusion(self, x: Tensor, t: Tensor, mask=None) -> Tuple[Tensor, Tensor]:
         r"""
         $$
@@ -265,7 +268,7 @@ class VESDE(SDE):
         )
         return drift, diffusion
 
-    def get_discretized_drift_and_diffusion(self, x: Tensor, t: Tensor, mask=None) -> Tuple[Tensor, Tensor]:
+    def get_discretized_drift_and_diffusion(self, x: Tensor, t: Tensor, mask=None) -> Tuple[Tensor, Tensor]:  # noqa: ARG002
         r"""SMLD(NCSN) discretization.
 
         $$
@@ -289,7 +292,7 @@ class VESDE(SDE):
         g = torch.sqrt(sigma**2 - adjacent_sigma**2)
         return f, g
 
-    def marginal_prob(self, x, t, mask=None):
+    def marginal_prob(self, x, t, mask=None):  # noqa: ARG002
         std = self.sigma_min * (self.sigma_max / self.sigma_min) ** t
         mean = x
         return mean, std

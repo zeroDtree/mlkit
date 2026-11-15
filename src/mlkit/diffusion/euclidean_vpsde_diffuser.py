@@ -1,4 +1,4 @@
-from typing import Any, Callable, Optional, Tuple, cast
+from typing import Any, Callable, Optional, Tuple, cast, override
 
 import torch
 from torch import Tensor
@@ -34,8 +34,8 @@ class EuclideanVPSDEConfig(EuclideanDiffuserConfig):
         n_correct_steps: int = 1,
         snr: float = 1.0,
         model_uses_continuous_time: bool = False,
-        *args,
-        **kwargs,
+        *_args,
+        **_kwargs,
     ):
         r"""
         Args:
@@ -121,6 +121,7 @@ class EuclideanVPSDEDiffuser(EuclideanDiffuser):
             return continuous_t.reshape(discrete_t.shape)
         return discrete_t.long()
 
+    @override
     def forward_process(
         self,
         x_start: Tensor,
@@ -128,7 +129,7 @@ class EuclideanVPSDEDiffuser(EuclideanDiffuser):
         t_b: Tensor,
         mask: Tensor,
         is_continuous_time: bool = False,
-        **kwargs: Any,
+        **_kwargs: Any,
     ) -> dict:
         """Diffuse ``x_start`` (valid at noise level ``t_a``) forward to ``t_b``.
 
@@ -232,7 +233,7 @@ class EuclideanVPSDEDiffuser(EuclideanDiffuser):
         x_t: Tensor,
         t: Tensor,
         padding_mask: Tensor | None = None,
-        *args: Any,
+        *_args: Any,
         **kwargs: Any,
     ) -> dict:
         r"""
@@ -297,6 +298,7 @@ class EuclideanVPSDEDiffuser(EuclideanDiffuser):
             "x": x,
         }
 
+    @override
     def get_posterior_mean_fn(
         self,
         score: Tensor | None = None,

@@ -29,8 +29,8 @@ class EuclideanDDIMConfig(EuclideanDDPMConfig):
         betas=None,
         n_inference_steps: int = 1000,
         eta: float = 0.0,
-        *args,
-        **kwargs,
+        *_args,
+        **_kwargs,
     ):
         """Initialize the EuclideanDDIMConfig
 
@@ -112,7 +112,7 @@ class EuclideanDDIMDiffuser(EuclideanDDPMDiffuser):
         x_t: Tensor,
         t: Tensor,
         padding_mask: Tensor | None = None,
-        *args: Any,
+        *_args: Any,
         **kwargs: Any,
     ) -> dict:
         r"""DDIM sampling algorithm:

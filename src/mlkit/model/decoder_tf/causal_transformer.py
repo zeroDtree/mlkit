@@ -1,5 +1,5 @@
 import math
-from typing import Optional, Tuple, cast
+from typing import Optional, Tuple, cast, override
 
 import torch
 from torch import Tensor
@@ -37,6 +37,7 @@ class FeedForwardBlock(torch.nn.Module):
 
 
 class MultiHeadAttention(torch.nn.Module):
+    @override
     def __init__(
         self,
         embed_dim,
@@ -151,6 +152,7 @@ class MultiHeadAttention(torch.nn.Module):
         else:
             return output, None
 
+    @override
     def forward(
         self,
         q,
@@ -311,7 +313,7 @@ class CausalLanguageModel(torch.nn.Module):
         num_head,
         dropout=0,
         num_block=3,
-        max_pos_len=5000,
+        max_pos_len=5000,  # noqa: ARG002
         batch_first=True,
     ):
         super().__init__()
@@ -449,6 +451,7 @@ class CausalLanguageModelForAuto(PreTrainedModel, GenerationMixin):  # ty: ignor
         )
         self.lm_head = torch.nn.Linear(config.embed_dim, config.vocab_size, bias=False)
 
+    @override
     def forward(
         self,
         input_ids: torch.LongTensor | None = None,
@@ -501,7 +504,7 @@ class CausalLanguageModelForAuto(PreTrainedModel, GenerationMixin):  # ty: ignor
             cross_attentions=None,
         )
 
-    def prepare_inputs_for_generation(self, input_ids, past_key_values=None, attention_mask=None, **kwargs):
+    def prepare_inputs_for_generation(self, input_ids, past_key_values=None, attention_mask=None, **_kwargs):
         # This method prepares inputs for the generate method
         return {
             "input_ids": input_ids,

@@ -10,9 +10,7 @@ import logging
 import os
 import sys
 import tempfile
-from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -27,7 +25,7 @@ from mlkit.pipeline.distributed_pipeline import (  # noqa: E402
     DistributedTrainingConfig,
 )
 from mlkit.pipeline.pipeline import LogConfig, TrainingState, latest_checkpoint_dir  # noqa: E402
-from mlkit.util.report import clear_deferred_error, defer_error, use_reporter  # noqa: E402
+from mlkit.util.failure import clear_deferred_error, defer_error  # noqa: E402
 
 
 class CountingDataset(torch.utils.data.Dataset):
@@ -69,10 +67,11 @@ class DeferOnFirstStep(BaseCallback):
             defer_error(RuntimeError("step log failed"))
 
 
-class FailingReporter:
-    def report(self, data: Mapping[str, Any], *, step: int | None = None) -> None:
-        del data, step
-        raise RuntimeError("epoch log failed")
+class FailingLog(BaseCallback):
+    def on_event(self, event: CallbackEvent, *args, **kwargs) -> None:
+        del args, kwargs
+        if event is CallbackEvent.LOG:
+            raise RuntimeError("epoch log failed")
 
 
 def _make_accelerator() -> MagicMock:
@@ -90,11 +89,11 @@ def _make_accelerator() -> MagicMock:
 def _bind_accelerator(monkeypatch: pytest.MonkeyPatch, accelerator: MagicMock) -> None:
     monkeypatch.setattr(
         "mlkit.pipeline.distributed_pipeline.Accelerator",
-        lambda *args, **kwargs: accelerator,
+        lambda *_args, **_kwargs: accelerator,
     )
     monkeypatch.setattr(
         "mlkit.pipeline.distributed_pipeline.accelerate.utils.set_seed",
-        lambda *args, **kwargs: None,
+        lambda *_args, **_kwargs: None,
     )
 
 
@@ -107,7 +106,7 @@ def _pipeline(
 ) -> TinyDistributedPipeline:
     model = TinyModel()
     optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
-    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda step: 1.0)
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda _step: 1.0)
     config = DistributedTrainingConfig(
         n_epochs=1,
         batch_size=1,
@@ -177,9 +176,13 @@ def test_halt_after_a_finished_epoch_saves_the_next_epoch(monkeypatch: pytest.Mo
     clear_deferred_error()
     try:
         with tempfile.TemporaryDirectory() as save_dir:
-            pipeline = _pipeline(dataset, save_dir=save_dir, log_config=log_config)
-            with use_reporter(FailingReporter()):
-                pipeline.train()
+            pipeline = _pipeline(
+                dataset,
+                save_dir=save_dir,
+                log_config=log_config,
+                callbacks=[FailingLog()],
+            )
+            pipeline.train()
             state = _saved_state(save_dir)
             assert state.current_epoch == 1
             assert state.current_step_in_epoch == 0

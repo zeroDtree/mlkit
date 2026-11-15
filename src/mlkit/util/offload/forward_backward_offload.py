@@ -96,7 +96,7 @@ class ForwardBackwardOffloadHookContext(ForwardHookForDevice):
                 OffloadSavedTensorHook._set_offload_device(offload_device if not last_block_flag else device)
             return args, kwargs
 
-        def after_hook(module, args, kwargs, output):
+        def after_hook(module, _args, _kwargs, output):
             module.to(offload_device if not last_block_flag else device)
             return output
 
@@ -116,7 +116,7 @@ class ForwardBackwardOffloadHookContext(ForwardHookForDevice):
             module.to(device)
             return grad_output
 
-        def after_hook(module, grad_input, grad_output):
+        def after_hook(module, grad_input, _grad_output):
             if not first_block_flag:
                 module.to(offload_device)
             return grad_input

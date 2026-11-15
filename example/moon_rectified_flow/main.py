@@ -11,7 +11,7 @@ from utils import get_collate_fn, get_dataset, get_model
 _conditional_models: dict = {}
 
 
-def after_train(cfg, model_result, pipeline, accelerator, train_set):
+def after_train(cfg, model_result, pipeline, accelerator, train_set, report_callback):
     """Train the conditional flow on every rank while the process group is alive."""
     del model_result, pipeline, train_set
     from typing import Any, cast
@@ -59,6 +59,8 @@ def after_train(cfg, model_result, pipeline, accelerator, train_set):
         logger=logger,
         collate_fn=cond_collate,
     )
+    if report_callback is not None:
+        cond_pipeline.add_callbacks([report_callback])
     cond_pipeline.train()
     _conditional_models["model"] = cond_pipeline_model
 

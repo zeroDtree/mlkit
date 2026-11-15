@@ -22,7 +22,7 @@ class RandomGenerator:
 
     @staticmethod
     def get_probabilities_by_distribution(
-        n_numbers: int,
+        n_numbers: int,  # noqa: ARG004
         number_list: list[int],
         distribution: str = "uniform",
     ):

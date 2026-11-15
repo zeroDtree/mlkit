@@ -17,7 +17,7 @@ def linear_decay_with_warmup(value, current, total, warmup_steps=0):
         return value * (1 - (current - warmup_steps) / (total - warmup_steps))
 
 
-def constant_with_warmup(value, current, total, warmup_steps=0):
+def constant_with_warmup(value, current, total, warmup_steps=0):  # noqa: ARG001
     if current < warmup_steps:
         return value * current / warmup_steps
     else:
@@ -163,7 +163,7 @@ class ObjectAttrsScheduler:
 
 
 if __name__ == "__main__":
-    from mlkit.util.report import MLflowReporter, report, use_reporter
+    from mlkit.util.report import MLflowCallback
 
     total = 100
     warmup_ratio = 0.1
@@ -190,15 +190,12 @@ if __name__ == "__main__":
         setter_methods={"x": "set_x"},
         getter_methods={"x": "get_x"},
     )
-    with (
-        MLflowReporter(
-            tracking_uri=None,
-            experiment="scheduler-test",
-            run_name="scheduler-test",
-            config={},
-        ) as mlflow_reporter,
-        use_reporter(mlflow_reporter),
-    ):
+    with MLflowCallback(
+        tracking_uri=None,
+        experiment="scheduler-test",
+        run_name="scheduler-test",
+        config={},
+    ) as callback:
         for i in range(total):
             scheduler.step()
-            report(scheduler.get(), step=i)
+            callback.log(scheduler.get(), step=i)

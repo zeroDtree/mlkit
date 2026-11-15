@@ -21,9 +21,9 @@ from torch.utils.data import Dataset
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
+from mlkit.pipeline.callback import BaseCallback, CallbackEvent  # noqa: E402
 from mlkit.pipeline.dist_pipeline_impl import MyDistributedPipeline, MyTrainingConfig  # noqa: E402
 from mlkit.pipeline.pipeline import LogConfig  # noqa: E402
-from mlkit.util.report import use_reporter  # noqa: E402
 
 
 class ValueDataset(Dataset):
@@ -54,12 +54,15 @@ class ZeroModel(torch.nn.Module):
         return {"loss": loss}
 
 
-class RecordingReporter:
+class RecordingLog(BaseCallback):
     def __init__(self):
         self.payload: dict = {}
 
-    def report(self, data, *, step=None):
-        self.payload.update(data)
+    def on_event(self, event: CallbackEvent, *args, **kwargs) -> None:
+        del args
+        if event is not CallbackEvent.LOG:
+            return
+        self.payload.update(kwargs["metrics"])
 
 
 def collate_fn(batch):
@@ -71,7 +74,7 @@ def collate_fn(batch):
 def _make_pipeline(values: list[float]) -> MyDistributedPipeline:
     model = ZeroModel()
     optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
-    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda step: 1.0)
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda _step: 1.0)
     logger = logging.getLogger("eval_gather_metrics")
     logger.addHandler(logging.NullHandler())
     config = MyTrainingConfig(
@@ -110,8 +113,8 @@ def test_eval_calls_gather_for_metrics(monkeypatch):
         return original(x, *args, **kwargs)
 
     monkeypatch.setattr(pipeline.accelerator, "gather_for_metrics", tracking_gather)
-    with use_reporter(RecordingReporter()):
-        pipeline.eval()
+    pipeline.add_callbacks([RecordingLog()])
+    pipeline.eval()
     assert calls["n"] > 0, "eval() must call accelerator.gather_for_metrics"
 
 
@@ -146,9 +149,9 @@ def test_eval_aggregates_across_simulated_shards(monkeypatch):
 
     monkeypatch.setattr(pipeline.accelerator, "gather_for_metrics", fake_gather)
 
-    recorder = RecordingReporter()
-    with use_reporter(recorder):
-        pipeline.eval()
+    recorder = RecordingLog()
+    pipeline.add_callbacks([recorder])
+    pipeline.eval()
     logged = recorder.payload
 
     # Expected: all batch-mean losses from local + other, each repeated batch_size times.

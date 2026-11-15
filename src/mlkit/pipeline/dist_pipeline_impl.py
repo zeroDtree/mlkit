@@ -10,7 +10,6 @@ from tqdm.auto import tqdm
 
 from ..util.decorators import inherit_docstrings
 from ..util.iterator import inf_iterator_with_prefix
-from ..util.report import report
 from .callback import BaseCallback, CallbackEvent
 from .distributed_pipeline import (
     DistributedPipeline,
@@ -44,7 +43,7 @@ class MyTrainingConfig(DistributedTrainingConfig):
         gradient_accumulation_steps: int = 1,
         mixed_precision: str = "fp16",
         find_unused_parameters: bool = False,
-        *args,
+        *_args,
         **kwargs,
     ):
         """Initialize the MyTrainingConfig
@@ -184,7 +183,7 @@ class MyDistributedPipeline(DistributedPipeline):
             loss=loss,
             model_output=parsed_model_output,
             phase=phase,
-            can_log=phase == "train" and self._can_log(flag="steps"),
+            can_log=phase == "train" and self._log_interval_due("steps"),
         )
         return {
             "loss": loss,
@@ -294,13 +293,7 @@ class MyDistributedPipeline(DistributedPipeline):
                 "min_eval_loss": all_losses.min().item(),
                 "std_eval_loss": all_losses.std().item() if all_losses.numel() > 1 else 0.0,
             }
-        if self.accelerator.is_main_process and self.logger is not None:
-            report(
-                result,
-                step=self.training_state.current_global_step,
-                logger=self.logger,
-                on_error="defer",
-            )
+        self.log(result, step=self.training_state.current_global_step)
         self._sync_halt()
 
         self.model.train()

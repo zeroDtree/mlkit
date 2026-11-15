@@ -1,5 +1,5 @@
 import math
-from typing import Any, Callable, Optional, Tuple, cast
+from typing import Any, Callable, Optional, Tuple, cast, override
 
 import torch
 from torch import Tensor
@@ -46,8 +46,8 @@ class EuclideanEDMConfig(EuclideanDiffuserConfig):
         sigma_multiply_by_sigma_data: bool = False,
         do_forward_process: bool = True,
         do_edm_combine: bool = True,
-        *args,
-        **kwargs,
+        *_args,
+        **_kwargs,
     ):
         r"""
         Args:
@@ -330,6 +330,7 @@ class EuclideanEDMDiffuser(EuclideanDiffuser):
             "batch": batch,
         }
 
+    @override
     def forward_process(
         self,
         x_start: Tensor,
@@ -337,7 +338,7 @@ class EuclideanEDMDiffuser(EuclideanDiffuser):
         t_b: Tensor,
         mask: Tensor,
         is_continuous_time: bool = False,
-        **kwargs: Any,
+        **_kwargs: Any,
     ) -> dict:
         assert (t_b >= t_a).all()
         sigma_a = self.config.sigma(t_a, is_continuous_time)
@@ -366,7 +367,7 @@ class EuclideanEDMDiffuser(EuclideanDiffuser):
         x_t: Tensor,
         t: Tensor,
         padding_mask: Optional[Tensor] = None,
-        *args: Any,
+        *_args: Any,
         **kwargs: Any,
     ) -> dict:
         r"""EDM sampling step (Euler or Heun's method).
@@ -514,7 +515,7 @@ class EuclideanEDMDiffuser(EuclideanDiffuser):
             x_t: Tensor,
             t: Tensor,
             padding_mask: Tensor,
-            is_continuous_time: bool = True,
+            is_continuous_time: bool = True,  # noqa: ARG001
         ):
             r"""
             Args:

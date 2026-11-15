@@ -97,7 +97,7 @@ def plot_boxplot(
         zorder=zorder,
         capwidths=capwidths,
         label=label,
-        data=None,
+        data=data,
     )
 
     # Set tick labels

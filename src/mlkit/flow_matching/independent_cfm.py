@@ -15,7 +15,7 @@ class IndependentCFMFlowConfig(BaseFlowConfig):
         n_discretization_steps: int,
         ndim_micro_shape: int = 2,
         n_inference_steps: int | None = None,
-        *args: Any,
+        *_args: Any,
         **kwargs: Any,
     ) -> None:
         super().__init__(

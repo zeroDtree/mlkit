@@ -121,23 +121,23 @@ def _atomic_write_bytes(path: Path, data: bytes) -> None:
     os.replace(tmp_path, path)
 
 
-def _unlink_output(ctx: SampleContext, event: SaveEvent) -> None:
+def _unlink_output(ctx: SampleContext, _event: SaveEvent) -> None:
     if ctx.output_path is not None:
         Path(ctx.output_path).unlink(missing_ok=True)
 
 
-def _clear_runtime_fields(ctx: SampleContext, event: SaveEvent) -> None:
+def _clear_runtime_fields(ctx: SampleContext, _event: SaveEvent) -> None:
     ctx.output_path = None
     ctx.checksum = None
     ctx.error = None
 
 
-def _clear_output_fields(ctx: SampleContext, event: SaveEvent) -> None:
+def _clear_output_fields(ctx: SampleContext, _event: SaveEvent) -> None:
     ctx.output_path = None
     ctx.checksum = None
 
 
-def _can_succeed(ctx: SampleContext, event: SaveEvent) -> bool:
+def _can_succeed(ctx: SampleContext, _event: SaveEvent) -> bool:
     return ctx.output_path is not None and ctx.checksum is not None
 
 
@@ -244,9 +244,9 @@ class ResumableSaver:
 
     def _sync_to_db(
         self,
-        from_s: SaveStatus,
+        _from_s: SaveStatus,
         to_s: SaveStatus,
-        evt: SaveEvent,
+        _evt: SaveEvent,
         ctx: SampleContext,
     ) -> None:
         meta_json = json.dumps(ctx.meta) if ctx.meta is not None else None

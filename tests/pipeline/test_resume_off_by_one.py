@@ -57,7 +57,7 @@ def make_pipeline(*, save_steps: int = 2) -> tuple[SimplePipeline, CountingDatas
     dataset = CountingDataset(20)  # 5 batches of size 4
     model = SimpleModel()
     optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
-    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda step: 1.0)
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda _step: 1.0)
     config = TrainingConfig(
         n_epochs=1,
         batch_size=4,

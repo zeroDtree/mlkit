@@ -3,6 +3,7 @@ import os
 import re
 import shutil
 from abc import ABCMeta, abstractmethod
+from collections.abc import Mapping
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union, cast
 
 import datasets
@@ -11,8 +12,15 @@ from accelerate import skip_first_batches
 from torch import Tensor
 from tqdm.auto import tqdm
 
-from ..util.report import has_deferred_error, persist_report_run, report
+from ..util.failure import defer_error, has_deferred_error
 from .callback import BaseCallback, CallbackEvent, CallbackManager
+
+
+def _format_log(metrics: Mapping[str, Any], step: int | None) -> str:
+    body = " ".join(f"{key}={value}" for key, value in metrics.items())
+    if step is None:
+        return body
+    return f"step={step} {body}"
 
 
 class TrainingConfig:
@@ -35,8 +43,8 @@ class TrainingConfig:
         max_grad_norm: float = 1.0,
         max_grad_value: float = 1.0,
         gradient_accumulation_steps: int = 1,
-        *args,
-        **kwargs,
+        *_args,
+        **_kwargs,
     ):
         """Initialize the TrainingConfig
 
@@ -88,8 +96,8 @@ class LogConfig:
         log_steps: int = 100,
         log_epochs: int = 1,
         log_strategy: Literal["epochs", "steps"] = "epochs",
-        *args,
-        **kwargs,
+        *_args,
+        **_kwargs,
     ):
         """Initialize the LogConfig
 
@@ -159,8 +167,8 @@ class BasePipeline(metaclass=ABCMeta):
         collate_fn: Optional[Callable] = None,
         callbacks: Optional[List[BaseCallback]] = None,
         load_checkpoint: bool = True,
-        *args,
-        **kwargs,
+        *_args,
+        **_kwargs,
     ):
         """Initialize the BasePipeline
 
@@ -289,13 +297,8 @@ class BasePipeline(metaclass=ABCMeta):
                     break
                 pbar.set_postfix(loss=result["loss"])
 
-        if completed and result is not None and self._can_log(flag="epochs"):
-            report(
-                result,
-                step=self.training_state.current_epoch,
-                logger=self.logger,
-                on_error="defer",
-            )
+        if completed and result is not None and self._log_interval_due("epochs"):
+            self.log(result, step=self.training_state.current_epoch)
         if self._log_interval_due("epochs"):
             self._sync_halt()
         if completed:
@@ -316,7 +319,6 @@ class BasePipeline(metaclass=ABCMeta):
         model = self.model
         optimizer = self.optimizer
         scheduler = self.scheduler
-        logger = self.logger
         device = self.training_config.device
         model.train()
         for key, value in batch.items():
@@ -344,14 +346,12 @@ class BasePipeline(metaclass=ABCMeta):
         if scheduler is not None:
             scheduler.step()
 
-        if self._can_log(flag="steps") and logger is not None:
-            logger.info(
-                f"[Train] Epoch {self.training_state.current_epoch}, Step {self.training_state.current_step_in_epoch}, Loss {loss.item()}"
-            )
+        result = {"loss": loss.item()}
+        self._include_model_metrics(result, raw_loss)
+        if self._log_interval_due("steps"):
+            self.log(result, step=self.training_state.current_global_step)
         self.trigger_callbacks(event=CallbackEvent.STEP_END, batch=batch)
-        return {
-            "loss": loss.item(),
-        }
+        return result
 
     def gradient_clip(self) -> None:
         """Clip the gradient
@@ -388,6 +388,51 @@ class BasePipeline(metaclass=ABCMeta):
         """Stop this rank when a shared or local failure is waiting."""
         if self._halt_if_any_rank_failed():
             self._halt = True
+
+    def _is_global_main_process(self) -> bool:
+        """Return whether this process records metrics.
+
+        A pipeline without an accelerator is the only process.
+        """
+        accelerator = getattr(self, "accelerator", None)
+        return True if accelerator is None else bool(accelerator.is_main_process)
+
+    def log(self, metrics: Mapping[str, Any], *, step: int | None = None) -> None:
+        """Record one metric payload on the global main process.
+
+        Callbacks receive a ``LOG`` event. A callback failure is remembered, and
+        the text line is still written when a logger is attached.
+
+        Args:
+            metrics: values to record.
+            step: step index for this payload.
+        """
+        if not self._is_global_main_process():
+            return
+        try:
+            self.trigger_callbacks(event=CallbackEvent.LOG, metrics=metrics, step=step)
+        except Exception as exc:
+            defer_error(exc)
+            if self.logger is not None:
+                self.logger.error("log failed: %s", exc)
+        if self.logger is not None:
+            self.logger.info(_format_log(metrics, step))
+
+    def _include_model_metrics(self, result: Dict[str, Any], raw_loss: object) -> None:
+        """Copy ``metrics`` from a model output into the step result.
+
+        Args:
+            result: payload that will be logged for this step.
+            raw_loss: value returned by ``compute_loss``.
+        """
+        if not isinstance(raw_loss, dict):
+            return
+        payload = cast(dict[str, Any], raw_loss)
+        model_output = payload.get("model_output")
+        source = cast(dict[str, Any], model_output) if isinstance(model_output, dict) else payload
+        extra = source.get("metrics")
+        if isinstance(extra, dict):
+            result.update(cast(dict[str, Any], extra))
 
     def _is_local_main_process(self) -> bool:
         """Return True if this process should emit UI output (e.g. progress bars).
@@ -455,11 +500,6 @@ class BasePipeline(metaclass=ABCMeta):
             return (self.training_state.current_global_step + 1) % self.log_config.log_steps == 0
         return False
 
-    def _can_log(self, flag: Literal["epochs", "steps"]):
-        if self.logger is None:
-            return False
-        return self._log_interval_due(flag)
-
     def _can_eval(self, flag: Literal["epochs", "steps"]):
         if self.training_config.eval_strategy != flag:
             return False
@@ -507,7 +547,7 @@ class BasePipeline(metaclass=ABCMeta):
             ]:
                 file_path = os.path.join(temp_checkpoint_dir, f"{base_name}.pth")
                 torch.save(getattr(self, base_name), file_path)
-            self._persist_report_run(temp_checkpoint_dir)
+            self.trigger_callbacks(event=CallbackEvent.PRE_FINALIZE_SAVE, checkpoint_dir=temp_checkpoint_dir)
             os.rename(temp_checkpoint_dir, final_checkpoint_dir)
             if self.logger is not None:
                 self.logger.info(f"Model saved to {final_checkpoint_dir}")
@@ -558,9 +598,6 @@ class BasePipeline(metaclass=ABCMeta):
 
     def get_latest_checkpoint_dir(self) -> str | None:
         return latest_checkpoint_dir(self.training_config.save_dir)
-
-    def _persist_report_run(self, directory: str) -> None:
-        persist_report_run(directory)
 
     def add_callbacks(self, callbacks: List[BaseCallback] | None):
         """Add a list of callbacks

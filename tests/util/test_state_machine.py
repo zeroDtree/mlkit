@@ -38,11 +38,11 @@ class TaskContext:
     last_error: str | None = None
 
 
-def can_retry(ctx: TaskContext, event: TaskEvent) -> bool:
+def can_retry(ctx: TaskContext, _event: TaskEvent) -> bool:
     return ctx.retry_count < ctx.max_retries
 
 
-def increment_retry(ctx: TaskContext, event: TaskEvent) -> None:
+def increment_retry(ctx: TaskContext, _event: TaskEvent) -> None:
     ctx.retry_count += 1
 
 
@@ -116,16 +116,16 @@ def test_guard_fallback_second_transition_fires() -> None:
 def test_hook_order_and_enter_sees_new_state() -> None:
     log: list[str] = []
 
-    def on_exit(ctx: TaskContext, event: TaskEvent) -> None:
+    def on_exit(_ctx: TaskContext, event: TaskEvent) -> None:
         log.append(f"exit:{sm.current_state.name}:{event.name}")
 
-    def on_trans(ctx: TaskContext, event: TaskEvent) -> None:
+    def on_trans(_ctx: TaskContext, event: TaskEvent) -> None:
         log.append(f"action:{sm.current_state.name}:{event.name}")
 
-    def on_enter(ctx: TaskContext, event: TaskEvent) -> None:
+    def on_enter(_ctx: TaskContext, event: TaskEvent) -> None:
         log.append(f"enter:{sm.current_state.name}:{event.name}")
 
-    def on_change(from_s: TaskState, to_s: TaskState, event: TaskEvent, ctx: TaskContext) -> None:
+    def on_change(from_s: TaskState, to_s: TaskState, event: TaskEvent, _ctx: TaskContext) -> None:
         log.append(f"change:{from_s.name}->{to_s.name}:{event.name}")
 
     ctx = TaskContext(task_id="order")
@@ -244,11 +244,11 @@ def test_self_loop_still_runs_exit_enter_and_on_state_change() -> None:
     sm = StateMachine[TaskState, TaskEvent, TaskContext](
         TaskState.RUNNING,
         TaskContext(task_id="loop"),
-        on_state_change=lambda f, t, e, c: log.append(f"change:{f.name}->{t.name}"),
+        on_state_change=lambda f, t, _e, _c: log.append(f"change:{f.name}->{t.name}"),
     )
     sm.add_transition(TaskState.RUNNING, TaskEvent.RETRY, TaskState.RUNNING)
-    sm.on_exit(TaskState.RUNNING, lambda c, e: log.append("exit"))
-    sm.on_enter(TaskState.RUNNING, lambda c, e: log.append("enter"))
+    sm.on_exit(TaskState.RUNNING, lambda _c, _e: log.append("exit"))
+    sm.on_enter(TaskState.RUNNING, lambda _c, _e: log.append("enter"))
 
     sm.send(TaskEvent.RETRY)
     assert log == ["exit", "enter", "change:RUNNING->RUNNING"]
@@ -262,8 +262,8 @@ def test_fluent_api_returns_self() -> None:
     )
     result = (
         sm.add_transition(TaskState.PENDING, TaskEvent.START, TaskState.RUNNING)
-        .on_enter(TaskState.RUNNING, lambda c, e: None)
-        .on_exit(TaskState.PENDING, lambda c, e: None)
+        .on_enter(TaskState.RUNNING, lambda _c, _e: None)
+        .on_exit(TaskState.PENDING, lambda _c, _e: None)
     )
     assert result is sm
 

@@ -1,6 +1,7 @@
 from collections.abc import Mapping
 from typing import Any, Literal
 
+from .callback import ReportCallback
 from .data import _plain_data
 
 WandbMode = Literal["online", "offline", "disabled", "shared"]
@@ -20,8 +21,8 @@ def _wandb_mode(mode: object) -> WandbMode | None:
     raise ValueError(f"Unknown wandb mode: {mode}")
 
 
-class WandbReporter:
-    """Reporter that writes a run through ``wandb.log``."""
+class WandbCallback(ReportCallback):
+    """Callback that writes a run through ``wandb.log``."""
 
     def __init__(
         self,
@@ -35,7 +36,7 @@ class WandbReporter:
         config: Mapping[str, Any],
         run_id: str | None = None,
     ):
-        """Initialize the reporter.
+        """Initialize the callback.
 
         Args:
             project: wandb project.
@@ -58,7 +59,7 @@ class WandbReporter:
         self.run_id = run_id
         self._started = False
 
-    def __enter__(self) -> "WandbReporter":
+    def __enter__(self) -> "WandbCallback":
         import wandb
 
         if self.run_id is None:
@@ -116,7 +117,7 @@ class WandbReporter:
 
         wandb.config.update(_plain_data(self.config), allow_val_change=True)
 
-    def report(self, data: Mapping[str, Any], *, step: int | None = None) -> None:
+    def log(self, data: Mapping[str, Any], *, step: int | None = None) -> None:
         """Forward the payload to ``wandb.log``.
 
         Args:
