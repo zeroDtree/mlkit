@@ -7,11 +7,11 @@ from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union, c
 import accelerate
 import datasets
 import torch
-import wandb
 from accelerate import Accelerator
 from accelerate.utils import DistributedDataParallelKwargs
 
 from ..util.decorators import inherit_docstrings
+from ..util.failure import defer_error, has_deferred_error
 from .callback import BaseCallback, CallbackEvent
 from .pipeline import BasePipeline, LogConfig, TrainingConfig
 
@@ -41,27 +41,9 @@ class DistributedTrainingConfig(TrainingConfig):
         find_unused_parameters: bool = False,
         **kwargs,
     ):
-        """Initialize the DistributedTrainingConfig
+        """Accelerate-specific training settings (mixed precision, DDP flags).
 
-        Args:
-            n_epochs (int, optional): the number of epochs. Defaults to 100.
-            batch_size (int, optional): the batch size. Defaults to 4.
-            device (str, optional): the device to use for training. Defaults to "cuda".
-            save_strategy (Literal[&quot;epochs&quot;, &quot;steps&quot;, None], optional): the strategy determines whether to save the model and when to save it. Defaults to "epochs".
-            save_dir (str, optional): the directory to save the model. Defaults to None.
-            save_steps (int, optional): the number of steps to save the model. Defaults to 10.
-            save_epochs (int, optional): the number of epochs to save the model. Defaults to 1.
-            save_total_limit (int, optional): the maximum number of checkpoints to save. Defaults to 5.
-            num_workers (int, optional): the number of workers to use for data loading. Defaults to 4.
-            train_shuffle (bool, optional): whether to shuffle the training data. Defaults to True.
-            eval_strategy (Literal[&quot;epochs&quot;, &quot;steps&quot;], optional): the strategy determines whether to evaluate the model and when to evaluate it. Defaults to None.
-            eval_steps (int, optional): the number of steps to evaluate the model. Defaults to 500.
-            eval_epochs (int, optional): the number of epochs to evaluate the model. Defaults to 1.
-            grad_clip_strategy (Literal[&quot;norm&quot;, &quot;value&quot;, None], optional): the strategy determines whether to clip the gradient and how to clip it. Defaults to "norm".
-            max_grad_norm (float, optional): the maximum gradient norm to clip the gradient. Defaults to 1.0.
-            max_grad_value (float, optional): the maximum gradient value to clip the gradient. Defaults to 1.0.
-            gradient_accumulation_steps (int, optional): the number of steps to accumulate gradients before updating the model. Defaults to 1.
-            mixed_precision (str, optional): the mixed precision to use for training. Defaults to "fp16".
+        Shared schedule fields are documented on :class:`TrainingConfig`.
         """
 
         super().__init__(
@@ -103,17 +85,10 @@ class DistributedPipeline(BasePipeline):
         callbacks: Optional[List[BaseCallback]] = None,
         **kwargs,
     ):
-        """Initialize the DistributedPipeline
+        """Build an :class:`Accelerator`, prepare modules, and resume if configured.
 
         Args:
-            model (torch.nn.Module): the model to train
-            dataset (Union[torch.utils.data.Dataset, datasets.Dataset]): the dataset to train on
-            optimizers (Tuple[torch.optim.Optimizer, torch.optim.lr_scheduler.LambdaLR]): the optimizers to use for training
-            training_config (DistributedTrainingConfig): the training configuration
-            log_config (LogConfig): the logging configuration
-            logger (logging.Logger): the logger to use for logging
-            collate_fn (Optional[Callable], optional): the collate function to use for the dataset. Defaults to None.
-            seed (int, optional): the seed to use for the random number generator. Defaults to 42.
+            seed: RNG seed applied before ``Accelerator`` construction.
         """
         accelerate.utils.set_seed(seed)
         self.accelerator = Accelerator(
@@ -147,7 +122,7 @@ class DistributedPipeline(BasePipeline):
             self.load()
             self.training_config = training_config
 
-        if self.accelerator.is_local_main_process:
+        if self.accelerator.is_main_process:
             assert self.logger is not None, f"Error from {self.__class__.__name__}: logger is required"
             self.logger.info("Using distributed training with accelerate")
             self.logger.info(f"Number of processes: {self.accelerator.num_processes}")
@@ -172,7 +147,6 @@ class DistributedPipeline(BasePipeline):
         model: torch.nn.Module = self.model
         optimizer = self.optimizer
         scheduler = self.scheduler
-        logger = self.logger
         model.train()
 
         result = {}
@@ -203,16 +177,72 @@ class DistributedPipeline(BasePipeline):
         result["loss"] = loss.item()
         result["lr"] = scheduler.get_last_lr()[0]
         result["global_step"] = self.training_state.current_global_step
+        self._include_model_metrics(result, raw_loss)
 
-        # Only log on local main process
-        if self._can_log(flag="steps") and self.accelerator.is_local_main_process and logger is not None:
-            logger.info(
-                f"[Train] Epoch {self.training_state.current_epoch}, Step {self.training_state.current_step_in_epoch}, Loss {loss.item()}"
-            )
-            wandb.log(result, step=self.training_state.current_global_step)
+        # A backend failure is remembered. Every rank hears about it on a logging step.
+        if self._log_interval_due("steps"):
+            self.log(result, step=self.training_state.current_global_step)
+            self._sync_halt()
 
         self.trigger_callbacks(event=CallbackEvent.STEP_END, batch=batch)
         return result
+
+    def _share_flag(self, local: bool) -> bool:
+        """Share one rank-local boolean with every rank.
+
+        ``num_processes == 1`` returns ``local``. Otherwise the rank where
+        ``local`` is true sets Accelerate's trigger, and every rank checks it.
+        The check consumes the trigger. Every rank must enter this call
+        together, and the flag must be consumed before the next phase sets it.
+
+        Args:
+            local: this rank's value.
+
+        Returns:
+            True when any rank passed true.
+        """
+        if self.accelerator.num_processes == 1:
+            return local
+        if local:
+            self.accelerator.set_trigger()
+        return bool(self.accelerator.check_trigger())
+
+    def _halt_if_any_rank_failed(self) -> bool:
+        """Share a deferred error stored on the main process.
+
+        ``num_processes == 1`` reads the local error. Otherwise only the main
+        process sets the trigger, and every rank checks it.
+        """
+        if self.accelerator.num_processes == 1:
+            return has_deferred_error()
+        return self._share_flag(self.accelerator.is_main_process and has_deferred_error())
+
+    def _abort_uncommitted_save(self, temp_dir: str, error: Exception | None) -> None:
+        """Drop an uncommitted checkpoint and stop every rank.
+
+        The rank that caught ``error`` remembers that exception. A failure on
+        another rank leaves this process with ``error is None``. The main
+        process still remembers a peer failure, because the report callback and
+        ``post_train`` only see the main process. The published checkpoint
+        directory is left untouched.
+
+        Args:
+            temp_dir: temporary directory for this attempt.
+            error: exception caught on this rank, or ``None`` when another rank
+                failed.
+        """
+        if self.accelerator.is_main_process:
+            if self.logger is not None:
+                if error is not None:
+                    self.logger.error(f"Failed to save checkpoint: {error}")
+                else:
+                    self.logger.error("Failed to save checkpoint on another rank")
+            shutil.rmtree(temp_dir, ignore_errors=True)
+        if error is not None:
+            defer_error(error)
+        elif self.accelerator.is_main_process:
+            defer_error(RuntimeError("Checkpoint save failed on another rank"))
+        self._halt = True
 
     def save(self) -> None:
         self.trigger_callbacks(event=CallbackEvent.PRE_SAVE)
@@ -226,20 +256,38 @@ class DistributedPipeline(BasePipeline):
         checkpoint_name = self._get_checkpoint_name(epoch, step, global_step)
         temp_checkpoint_dir = os.path.join(save_dir, f"tmp_{checkpoint_name}")
         final_checkpoint_dir = os.path.join(save_dir, checkpoint_name)
-        if os.path.exists(final_checkpoint_dir):
+
+        # The global main decides whether this checkpoint is already published.
+        already_saved = self.accelerator.is_main_process and os.path.exists(final_checkpoint_dir)
+        if self._share_flag(already_saved):
             return
 
-        # Directory creation is main-process only, but save_state must run on all ranks
-        # (FSDP/DeepSpeed use collectives inside accelerator.save_state).
+        prepare_error: Exception | None = None
         if self.accelerator.is_main_process:
-            os.makedirs(save_dir, exist_ok=True)
-            os.makedirs(temp_checkpoint_dir, exist_ok=True)
-        self.accelerator.wait_for_everyone()
+            try:
+                os.makedirs(save_dir, exist_ok=True)
+                os.makedirs(temp_checkpoint_dir, exist_ok=True)
+            except Exception as exc:
+                prepare_error = exc
+        if self._share_flag(prepare_error is not None):
+            self._abort_uncommitted_save(temp_checkpoint_dir, prepare_error)
+            return
 
+        # save_state uses collectives. A failure inside that collective can
+        # still leave the other ranks there; this joins ranks that have returned.
+        state_error: Exception | None = None
         try:
             self.accelerator.save_state(temp_checkpoint_dir)
+        except Exception as exc:
+            state_error = exc
+        if self._share_flag(state_error is not None):
+            self._abort_uncommitted_save(temp_checkpoint_dir, state_error)
+            return
 
-            if self.accelerator.is_main_process:
+        # Other ranks are done writing. Metadata and rename are one publish.
+        publish_error: Exception | None = None
+        if self.accelerator.is_main_process:
+            try:
                 for base_name in [
                     "training_state",
                     "training_config",
@@ -247,19 +295,24 @@ class DistributedPipeline(BasePipeline):
                 ]:
                     file_path = os.path.join(temp_checkpoint_dir, f"{base_name}.pth")
                     torch.save(getattr(self, base_name), file_path)
-
+                self.trigger_callbacks(event=CallbackEvent.PRE_FINALIZE_SAVE, checkpoint_dir=temp_checkpoint_dir)
                 os.rename(temp_checkpoint_dir, final_checkpoint_dir)
-                self._cleanup_old_checkpoints(save_dir=save_dir)
-                if self.accelerator.is_local_main_process and self.logger is not None:
+                if self.logger is not None:
                     self.logger.info(f"Model saved to {final_checkpoint_dir}")
+            except Exception as exc:
+                publish_error = exc
+        if self._share_flag(publish_error is not None):
+            self._abort_uncommitted_save(temp_checkpoint_dir, publish_error)
+            return
 
-        except Exception as e:
-            if self.accelerator.is_main_process:
-                if self.accelerator.is_local_main_process and self.logger is not None:
-                    self.logger.error(f"Failed to save checkpoint: {e}")
-                shutil.rmtree(temp_checkpoint_dir, ignore_errors=True)
-            raise
-        self.accelerator.wait_for_everyone()
+        if self.accelerator.is_main_process:
+            try:
+                self._cleanup_old_checkpoints(save_dir=save_dir)
+            except Exception as exc:
+                if self.logger is not None:
+                    self.logger.error(f"Failed to delete old checkpoints: {exc}")
+        if self._halt_if_any_rank_failed():
+            self._halt = True
         self.trigger_callbacks(event=CallbackEvent.POST_SAVE)
 
     def load(self) -> None:
@@ -289,7 +342,7 @@ class DistributedPipeline(BasePipeline):
         """Trigger all callbacks for a given event
 
         Args:
-            event (CallbackEvent): the event to trigger
+            event: the event to trigger
             **kwargs: the keyword arguments to pass to the callback
         """
         super().trigger_callbacks(

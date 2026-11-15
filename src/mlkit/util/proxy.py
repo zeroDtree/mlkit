@@ -6,10 +6,7 @@ def set_proxy(proxy_url: str = "http://127.0.0.1:7890") -> None:
     Set all common proxy environment variables.
 
     Args:
-        proxy_url (str, optional): the proxy url. Defaults to "http://127.0.0.1:7890".
-
-    Returns:
-        None
+        proxy_url: the proxy url. Defaults to "http://127.0.0.1:7890".
     """
     os.environ.update(
         {

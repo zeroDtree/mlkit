@@ -1,3 +1,5 @@
+"""Hydra training example using :func:`run_experiment`; see ``docs/experiment.md``."""
+
 import os
 import sys
 
@@ -5,16 +7,21 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import hydra
 from omegaconf import DictConfig
-from shared.runner import run_experiment
 from utils import get_collate_fn, get_dataset, get_model
 
 from mlkit.generative_model.ebm import EnergyBasedModel
+from mlkit.util.experiment import ExperimentSpec, run_experiment
 
 
-def post_train(cfg, model_result, pipeline, accelerator, train_set):
+def post_dist_teardown(ctx):
+    cfg = ctx.cfg
+    model_bundle = ctx.model_bundle
+    accelerator = ctx.accelerator
+    train_set = ctx.train_set
+    del ctx.train_set
     import matplotlib.pyplot as plt
 
-    model: EnergyBasedModel = model_result["model"].model
+    model: EnergyBasedModel = model_bundle["model"].model
     model = model.to(accelerator.device)
     model.eval()
 
@@ -75,14 +82,14 @@ def post_train(cfg, model_result, pipeline, accelerator, train_set):
 
 @hydra.main(config_path=".", config_name="config", version_base=None)
 def main(cfg: DictConfig):
-    run_experiment(
-        cfg,
-        get_model,
-        get_dataset,
-        get_collate_fn,
-        post_train_fn=post_train,
+    spec = ExperimentSpec(
+        get_model=get_model,
+        get_dataset=get_dataset,
+        get_collate=get_collate_fn,
+        post_dist_teardown=post_dist_teardown,
         save_dir_suffix=f"-sigma:{cfg.ebm.sigma}",
     )
+    run_experiment(cfg, spec)
 
 
 if __name__ == "__main__":

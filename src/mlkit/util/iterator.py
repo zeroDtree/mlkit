@@ -2,7 +2,7 @@ def inf_iterator(iterable):
     """An infinite iterator
 
     Args:
-        iterable (iterable): the iterable to iterate over
+        iterable: the iterable to iterate over
 
     Yields:
         any: the next element in the iterable
@@ -23,8 +23,8 @@ def inf_iterator_with_prefix(iterable, prefix_iterable=None):
     which the loop iterates `iterable` (the full, unmodified iterable) forever.
 
     Args:
-        iterable (iterable): the iterable to loop over indefinitely after the prefix is exhausted
-        prefix_iterable (iterable, optional): an iterable to fully exhaust once before looping. Defaults to None.
+        iterable: the iterable to loop over indefinitely after the prefix is exhausted
+        prefix_iterable: an iterable to fully exhaust once before looping. Defaults to None.
 
     Yields:
         any: the next element in the sequence

@@ -1,4 +1,4 @@
-{{! Google Docstring Template }}
+{{! Google docstring template (types live in annotations; see docs/docstrings.md) }}
 {{summaryPlaceholder}}
 
 {{extendedSummaryPlaceholder}}
@@ -6,30 +6,23 @@
 
 Args:
 {{#args}}
-    {{var}} (`{{typePlaceholder}}`): {{descriptionPlaceholder}}
+    {{var}}: {{descriptionPlaceholder}}{{#default}} Defaults to {{&default}}.{{/default}}
 {{/args}}
 {{#kwargs}}
-    {{var}} (`{{typePlaceholder}}`, *optional*): {{descriptionPlaceholder}}. Defaults to {{&default}}.
+    {{var}}: {{descriptionPlaceholder}}. Defaults to {{&default}}.
 {{/kwargs}}
 {{/parametersExist}}
 {{#exceptionsExist}}
 
 Raises:
 {{#exceptions}}
-    `{{type}}`: {{descriptionPlaceholder}}
+    {{type}}: {{descriptionPlaceholder}}
 {{/exceptions}}
 {{/exceptionsExist}}
-{{#returnsExist}}
-
-Returns:
-{{#returns}}
-    `{{typePlaceholder}}`: {{descriptionPlaceholder}}
-{{/returns}}
-{{/returnsExist}}
 {{#yieldsExist}}
 
 Yields:
 {{#yields}}
-    `{{typePlaceholder}}`: {{descriptionPlaceholder}}
+    {{var}}: {{descriptionPlaceholder}}
 {{/yields}}
 {{/yieldsExist}}

@@ -1,4 +1,8 @@
-"""Tests for the unified two-time forward_process contract used by inpainting."""
+"""Tests for the unified two-time forward_process contract used by inpainting.
+
+Run with:
+    uv run pytest tests/diffusion/test_inpainting_forward_process.py
+"""
 
 from __future__ import annotations
 

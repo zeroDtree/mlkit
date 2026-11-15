@@ -39,10 +39,11 @@ dependencies = [
     "diffusers",
     "scikit-learn",
     "pillow",
+    "mlflow>=3.18.0",
 ]
 
 [project.optional-dependencies]
-hard = ["deepspeed", "flash-attn", "bitsandbytes"]
+hard = ["flash-attn", "bitsandbytes"]
 
 [dependency-groups]
 lint = ["ruff", "ty"]
@@ -53,20 +54,30 @@ doc = [
 ]
 notebook = ["ipykernel", "ipywidgets", "nbstripout"]
 dev = [
+    "pytest",
     { include-group = "lint" },
     { include-group = "doc" },
     { include-group = "notebook" },
 ]
 
 [tool.uv.extra-build-dependencies]
-deepspeed = [{ requirement = "torch", match-runtime = true }]
 flash-attn = [{ requirement = "torch", match-runtime = true }]
 
 [tool.uv.extra-build-variables]
 flash-attn = { FLASH_ATTENTION_SKIP_CUDA_BUILD = "TRUE" }
 
 [project.urls]
-Homepage = "https://github.com/zeroDtree/my_pkg_py"
+Homepage = "https://github.com/zeroDtree/mlkit"
+
+[tool.uv]
+package = true
+
+[tool.pytest.ini_options]
+pythonpath = ["src", "."]
+testpaths = ["tests"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mlkit"]
 
 [build-system]
 requires = ["hatchling"]

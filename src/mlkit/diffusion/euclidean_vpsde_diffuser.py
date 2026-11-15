@@ -1,4 +1,4 @@
-from typing import Any, Callable, Optional, Tuple, cast
+from typing import Any, Callable, Optional, Tuple, cast, override
 
 import torch
 from torch import Tensor
@@ -34,8 +34,8 @@ class EuclideanVPSDEConfig(EuclideanDiffuserConfig):
         n_correct_steps: int = 1,
         snr: float = 1.0,
         model_uses_continuous_time: bool = False,
-        *args,
-        **kwargs,
+        *_args,
+        **_kwargs,
     ):
         r"""
         Args:
@@ -49,9 +49,6 @@ class EuclideanVPSDEConfig(EuclideanDiffuserConfig):
             model_uses_continuous_time: if True, pass continuous time in [0, 1] to the
                 backbone (e.g. MLP / flow-style models); if False, pass discrete timestep
                 indices (e.g. diffusers UNet)
-
-        Returns:
-            None
         """
         super().__init__(
             n_discretization_steps=n_discretization_steps,
@@ -84,14 +81,11 @@ class EuclideanVPSDEDiffuser(EuclideanDiffuser):
         """Initialize the EuclideanVPSDEDiffuser
 
         Args:
-            config (EuclideanVPSDEConfig): the config of the diffuser
-            time_scheduler (DiffusionTimeScheduler): the time scheduler of the diffuser
-            masker (MaskerInterface): the masker of the diffuser
-            model (Module): the model of the diffuser
-            loss_fn (Callable[[Tensor, Tensor, Tensor], Tensor]): the loss function of the diffuser
-
-        Returns:
-            None
+            config: the config of the diffuser
+            time_scheduler: the time scheduler of the diffuser
+            masker: the masker of the diffuser
+            model: the model of the diffuser
+            loss_fn: the loss function of the diffuser
         """
         super().__init__(config=config, time_scheduler=time_scheduler, masker=masker)
         self.config: EuclideanVPSDEConfig = config
@@ -121,6 +115,7 @@ class EuclideanVPSDEDiffuser(EuclideanDiffuser):
             return continuous_t.reshape(discrete_t.shape)
         return discrete_t.long()
 
+    @override
     def forward_process(
         self,
         x_start: Tensor,
@@ -128,7 +123,7 @@ class EuclideanVPSDEDiffuser(EuclideanDiffuser):
         t_b: Tensor,
         mask: Tensor,
         is_continuous_time: bool = False,
-        **kwargs: Any,
+        **_kwargs: Any,
     ) -> dict:
         """Diffuse ``x_start`` (valid at noise level ``t_a``) forward to ``t_b``.
 
@@ -232,14 +227,14 @@ class EuclideanVPSDEDiffuser(EuclideanDiffuser):
         x_t: Tensor,
         t: Tensor,
         padding_mask: Tensor | None = None,
-        *args: Any,
+        *_args: Any,
         **kwargs: Any,
     ) -> dict:
         r"""
         Args:
-            x_t (Tensor): the sample at timestep t
-            t (Tensor): the timestep
-            padding_mask (Tensor): the padding mask
+            x_t: the sample at timestep t
+            t: the timestep
+            padding_mask: the padding mask
 
         Returns:
             dict:
@@ -297,6 +292,7 @@ class EuclideanVPSDEDiffuser(EuclideanDiffuser):
             "x": x,
         }
 
+    @override
     def get_posterior_mean_fn(
         self,
         score: Tensor | None = None,
@@ -306,8 +302,8 @@ class EuclideanVPSDEDiffuser(EuclideanDiffuser):
         r"""Get the posterior mean function
 
         Args:
-            score (Tensor, optional): the score of the sample
-            score_fn (Callable, optional): the function to compute score
+            score: the score of the sample
+            score_fn: the function to compute score
 
         Returns:
             Callable: the posterior mean function

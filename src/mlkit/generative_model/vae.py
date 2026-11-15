@@ -165,7 +165,7 @@ if __name__ == "__main__":
         config=config,
         encoder=_EncoderWrapper(data_dim, latent_dim),
         decoder=_DecoderWrapper(latent_dim, data_dim),
-        recon_loss_fn=lambda pred, target, mask: mse_loss(pred, target),
+        recon_loss_fn=lambda pred, target, _mask: mse_loss(pred, target),
     )
 
     x = torch.randn(batch_size, data_dim)

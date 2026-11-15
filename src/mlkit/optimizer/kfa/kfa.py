@@ -21,7 +21,7 @@ class KFA:
         self.remove_hook()
 
     @staticmethod
-    def calculate_fisher_inverse_mult_V(cache: dict, a: torch.Tensor, g: torch.Tensor, V: torch.Tensor):
+    def calculate_fisher_inverse_mult_V(cache: dict, a: torch.Tensor, g: torch.Tensor, V: torch.Tensor):  # noqa: ARG004
         """
         V:(..., m, n)
         aaT:(..., m, m)
@@ -49,8 +49,8 @@ class KFA:
         return result
 
     @staticmethod
-    def get_save_hook_for_a(cache: dict, module_dot_path: str, name: str = "a"):
-        def _save_hook_for_a(module: torch.nn.Module, args, kwargs):
+    def get_save_hook_for_a(cache: dict, module_dot_path: str, name: str = "a"):  # noqa: ARG004
+        def _save_hook_for_a(module: torch.nn.Module, args, _kwargs):
             match module.__class__.__name__:
                 case "Linear":
                     linear_module = cast(torch.nn.Linear, module)
@@ -67,8 +67,8 @@ class KFA:
         return _save_hook_for_a
 
     @staticmethod
-    def get_save_hook_for_g(cache: dict, module_dot_path: str, name: str = "g"):
-        def _save_hook_for_g(module, grad_input, grad_output):
+    def get_save_hook_for_g(cache: dict, module_dot_path: str, name: str = "g"):  # noqa: ARG004
+        def _save_hook_for_g(module, _grad_input, grad_output):
             match module.__class__.__name__:
                 case "Linear":
                     linear_module = cast(torch.nn.Linear, module)

@@ -17,8 +17,8 @@ def get_logger(name="unnamed", log_dir: str | None = None) -> logging.Logger:
     """Get a logger
 
     Args:
-        name (str, optional): the name of the logger. Defaults to "unnamed".
-        log_dir (str, optional): the directory to save the logs. Defaults to None.
+        name: the name of the logger. Defaults to "unnamed".
+        log_dir: the directory to save the logs. Defaults to None.
 
     Returns:
         logging.Logger: the logger
@@ -48,9 +48,9 @@ def get_and_create_new_log_dir(root="./logs", prefix="", suffix="") -> str:
     """Get and create a new log directory
 
     Args:
-        root (str, optional): the root directory to save the logs. Defaults to "./logs".
-        prefix (str, optional): the prefix of the log directory. Defaults to "".
-        suffix (str, optional): the suffix of the log directory. Defaults to "".
+        root: the root directory to save the logs. Defaults to "./logs".
+        prefix: the prefix of the log directory. Defaults to "".
+        suffix: the suffix of the log directory. Defaults to "".
 
     Returns:
         str: the new log directory

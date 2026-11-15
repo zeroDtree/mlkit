@@ -2,11 +2,7 @@ import torch
 
 
 def check_cuda():
-    """Check the CUDA environment, test whether torch can use cuda
-
-    Returns:
-        None
-    """
+    """Check the CUDA environment, test whether torch can use cuda"""
     print("============================================================")
     print("cuda.is_available:", torch.cuda.is_available())
     print("cuda.device_count:", torch.cuda.device_count())

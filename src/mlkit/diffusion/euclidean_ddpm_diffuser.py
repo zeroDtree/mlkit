@@ -1,4 +1,4 @@
-from typing import Any, Callable, Literal, Optional, Tuple, cast
+from typing import Any, Callable, Literal, Optional, Tuple, cast, override
 
 import torch
 from torch import Tensor
@@ -26,15 +26,15 @@ class EuclideanDDPMConfig(EuclideanDiffuserConfig):
         self,
         n_discretization_steps: int = 1000,
         ndim_micro_shape: int = 2,
-        use_probability_flow=False,
+        use_probability_flow=False,  # noqa: ARG002
         use_clip: bool = False,
         clip_sample_range: float = 1.0,
         use_dyn_thresholding: bool = False,
         dynamic_thresholding_ratio=0.995,
         sample_max_value: float = 1.0,
         betas=None,
-        *args,
-        **kwargs,
+        *_args,
+        **_kwargs,
     ):
         r"""
         Args:
@@ -47,8 +47,6 @@ class EuclideanDDPMConfig(EuclideanDiffuserConfig):
             dynamic_thresholding_ratio: the ratio of the dynamic thresholding
             sample_max_value: the maximum value of the sample used in thresholding
             betas: the betas
-        Returns:
-            None
         """
         super().__init__(
             n_discretization_steps=n_discretization_steps,
@@ -90,14 +88,11 @@ class EuclideanDDPMDiffuser(EuclideanDiffuser):
         """Initialize the EuclideanDDPMDiffuser
 
         Args:
-            config (EuclideanDDPMConfig): the config of the diffuser
-            time_scheduler (DiffusionTimeScheduler): the time scheduler of the diffuser
-            masker (MaskerInterface): the masker of the diffuser
-            model (Module): the model of the diffuser
-            loss_fn (Callable[[Tensor, Tensor, Tensor], Tensor]): the loss function of the diffuser
-
-        Returns:
-            None
+            config: the config of the diffuser
+            time_scheduler: the time scheduler of the diffuser
+            masker: the masker of the diffuser
+            model: the model of the diffuser
+            loss_fn: the loss function of the diffuser
         """
         super().__init__(config=config, time_scheduler=time_scheduler, masker=masker)
         self.config: EuclideanDDPMConfig = config
@@ -181,7 +176,7 @@ class EuclideanDDPMDiffuser(EuclideanDiffuser):
             "batch": batch,
         }
 
-    def q_xt_x_0(self, x_0: Tensor, t: Tensor, mask: Tensor) -> Tuple[Tensor, Tensor]:
+    def q_xt_x_0(self, x_0: Tensor, t: Tensor, mask: Tensor) -> Tuple[Tensor, Tensor]:  # noqa: ARG002
         r"""Forward process
 
         $$
@@ -189,9 +184,9 @@ class EuclideanDDPMDiffuser(EuclideanDiffuser):
         $$
 
         Args:
-            x_0 (Tensor): $x_0$
-            t (Tensor): $t$
-            mask (Tensor): the mask of the sample
+            x_0: $x_0$
+            t: $t$
+            mask: the mask of the sample
 
         Returns:
             Tuple[Tensor, Tensor]: the expectation and standard deviation of the sample
@@ -211,6 +206,7 @@ class EuclideanDDPMDiffuser(EuclideanDiffuser):
         alpha_bar = config.alphas_cumprod[t.clamp(min=0)]
         return torch.where(t < 0, torch.ones_like(alpha_bar), alpha_bar)
 
+    @override
     def forward_process(
         self,
         x_start: Tensor,
@@ -218,7 +214,7 @@ class EuclideanDDPMDiffuser(EuclideanDiffuser):
         t_b: Tensor,
         mask: Tensor,
         is_continuous_time: bool = False,
-        **kwargs: Any,
+        **_kwargs: Any,
     ) -> dict:
         """Diffuse ``x_start`` (valid at noise level ``t_a``) forward to ``t_b``.
 
@@ -249,7 +245,7 @@ class EuclideanDDPMDiffuser(EuclideanDiffuser):
         x_t: Tensor,
         t: Tensor,
         padding_mask: Tensor | None = None,
-        *args: Any,
+        *_args: Any,
         **kwargs: Any,
     ) -> dict:
         r"""
@@ -267,9 +263,9 @@ class EuclideanDDPMDiffuser(EuclideanDiffuser):
         $$
 
         Args:
-            x_t (Tensor): the sample at timestep t
-            t (Tensor): the timestep
-            padding_mask (Tensor): the padding mask
+            x_t: the sample at timestep t
+            t: the timestep
+            padding_mask: the padding mask
 
         Returns:
             dict:
@@ -359,7 +355,7 @@ class EuclideanDDPMDiffuser(EuclideanDiffuser):
         r"""Get the previous timestep for sampling.
 
         Args:
-            timestep (int): timestep
+            timestep: timestep
 
         Returns:
             int: the previous timestep for sampling
@@ -368,7 +364,7 @@ class EuclideanDDPMDiffuser(EuclideanDiffuser):
 
     def _get_variance(
         self,
-        t: int,
+        _t: int,
         alpha_prod_t: Tensor,
         alpha_prod_t_prev: Tensor,
         current_beta_t: Tensor,
@@ -380,10 +376,10 @@ class EuclideanDDPMDiffuser(EuclideanDiffuser):
         $$
 
         Args:
-            t (int): timestep
-            alpha_prod_t (Tensor): $\bar{\alpha}_t$
-            alpha_prod_t_prev (Tensor): $\bar{\alpha}_{t-1}$
-            current_beta_t (Tensor): $\beta_t$
+            _t: timestep
+            alpha_prod_t: $\bar{\alpha}_t$
+            alpha_prod_t_prev: $\bar{\alpha}_{t-1}$
+            current_beta_t: $\beta_t$
 
         Returns:
             Tensor: the variance for timestep t
@@ -393,6 +389,7 @@ class EuclideanDDPMDiffuser(EuclideanDiffuser):
         variance = torch.clamp(variance, min=1e-20)
         return variance
 
+    @override
     def get_posterior_mean_fn(
         self,
         score: Tensor | None = None,
@@ -402,8 +399,8 @@ class EuclideanDDPMDiffuser(EuclideanDiffuser):
         r"""Get the posterior mean function
 
         Args:
-            score (Tensor, optional): the score of the sample
-            score_fn (Callable, optional): the function to compute score
+            score: the score of the sample
+            score_fn: the function to compute score
 
         Returns:
             Callable: the posterior mean function

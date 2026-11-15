@@ -61,11 +61,11 @@ class ForwardHookForDevice:
             kwargs = {n: v.to(device) if isinstance(v, torch.Tensor) else v for n, v in kwargs.items()}
             return args, kwargs
 
-        def after_hook(module: torch.nn.Module, args, output):
+        def after_hook(module: torch.nn.Module, _args, output):
             module.to(origin_device)
             return output
 
-        def after_hook_with_kwargs(module, args, output):
+        def after_hook_with_kwargs(module, _args, output):
             module.to(origin_device)
             return output
 

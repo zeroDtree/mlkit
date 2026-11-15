@@ -98,7 +98,7 @@ class EnergyBasedModel(BaseLoss):
         device: torch.device | str,
         x_init: Tensor | None = None,
         return_all: bool = False,
-        **kwargs: Any,
+        **_kwargs: Any,
     ) -> dict[str, Any]:
         """Langevin Dynamics with the learned score field."""
         eta = self.config.langevin_step_size

@@ -74,9 +74,9 @@ class BaseGenerativeModel(BaseLoss):
         """_summary_
 
         Args:
-            x_t (Tensor): _description_
-            t (Tensor): _description_
-            padding_mask (`Tensor`, *optional*): _description_. Defaults to None.
+            x_t: _description_
+            t: _description_
+            padding_mask: _description_. Defaults to None.
 
         Returns:
             dict: A dictionary that must contain the key "x"
@@ -113,7 +113,7 @@ class BaseGenerativeModel(BaseLoss):
         r"""Forward function, input batch of data and return the dictionary containing the loss
 
         Args:
-            batch (dict[str, Any]): the batch of data
+            batch: the batch of data
 
         Returns:
             dict: a dictionary that must contain the key "loss"
@@ -135,10 +135,10 @@ class BaseGenerativeModel(BaseLoss):
         r"""Register a hook to be called after loss computation
 
         Args:
-            name (str): the name of the hook
-            fn (Callable[..., Any]): the function to be called
-            priority (`int`, optional): the priority of the hook. Defaults to 0.
-            enabled (`bool`, optional): whether the hook is enabled. Defaults to True.
+            name: the name of the hook
+            fn: the function to be called
+            priority: the priority of the hook. Defaults to 0.
+            enabled: whether the hook is enabled. Defaults to True.
         """
         hook = Hook(
             name=name,

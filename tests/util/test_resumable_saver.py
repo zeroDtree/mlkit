@@ -1,4 +1,8 @@
-"""Tests for the state-machine-backed resumable saver."""
+"""Tests for the state-machine-backed resumable saver.
+
+Run with:
+    uv run pytest tests/util/test_resumable_saver.py
+"""
 
 from __future__ import annotations
 
@@ -201,7 +205,5 @@ def test_recovery_report_defaults() -> None:
 def test_build_sample_id_separates_part_boundaries_and_config_hash() -> None:
     assert build_sample_id("a|b", "c") != build_sample_id("a", "b|c")
     assert build_sample_id("x", "y") != build_sample_id("x", config_hash="y")
-    assert build_sample_id("pocket", 1, config_hash="v1") == build_sample_id(
-        "pocket", 1, config_hash="v1"
-    )
+    assert build_sample_id("pocket", 1, config_hash="v1") == build_sample_id("pocket", 1, config_hash="v1")
     assert build_sample_id("pocket", 1) != build_sample_id("pocket", 1, config_hash="")

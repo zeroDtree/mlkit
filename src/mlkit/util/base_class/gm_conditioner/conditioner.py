@@ -30,7 +30,7 @@ class Conditioner(abc.ABC):
         r"""Prepare the condition dictionary
 
         Args:
-            train (`bool`, *optional*): whether the conditioner is used in training. Defaults to True.
+            train: whether the conditioner is used in training. Defaults to True.
 
         Returns:
             dict[str, Any]: the condition dictionary
@@ -57,9 +57,9 @@ class Conditioner(abc.ABC):
         r"""Get guidance vector g(x_t)
 
         Args:
-            x_t (Tensor): the input tensor
-            t (Tensor): the time tensor
-            padding_mask (Tensor): the padding mask
+            x_t: the input tensor
+            t: the time tensor
+            padding_mask: the padding mask
 
         Returns:
             Tensor: the guidance vector g(x_t)
@@ -105,8 +105,8 @@ class LossGuidanceConditioner(Conditioner):
         r"""Compute the conditional loss
 
         Args:
-            p_gt_data (Tensor): predicted clean data.
-            padding_mask (Tensor): the padding mask
+            p_gt_data: predicted clean data.
+            padding_mask: the padding mask
 
         Returns:
             Tensor: the conditional loss
@@ -123,15 +123,15 @@ class LossGuidanceConditioner(Conditioner):
         r"""Get guidance vector g(x_t) = -∇_{x_t} l(posterior_mean_fn(x_t), y)
 
         When ``p_gt_data`` is provided and already connected to ``x_t``, reuse that
-        tensor (training cache path). ``retain_graph=True`` so the later 
+        tensor (training cache path). ``retain_graph=True`` so the later
         backward can still use the shared denoiser graph. Otherwise clone ``x_t``
         and call ``posterior_mean_fn`` (sampling / fallback).
 
         Args:
-            x_t (Tensor): the input tensor
-            t (Tensor): the time tensor
-            padding_mask (Tensor): the padding mask
-            p_gt_data (Tensor, optional): cached posterior mean from the first
+            x_t: the input tensor
+            t: the time tensor
+            padding_mask: the padding mask
+            p_gt_data: cached posterior mean from the first
                 forward. Consumed here and not forwarded to ``posterior_mean_fn``.
 
         Returns:
@@ -164,11 +164,7 @@ class LossGuidanceConditioner(Conditioner):
         **kwargs: Any,
     ) -> tuple[Tensor, Tensor]:
         """Return conditional loss and ∇_{x_t}, reusing ``cached_p_gt_data`` when possible."""
-        use_cache = (
-            cached_p_gt_data is not None
-            and x_t.requires_grad
-            and cached_p_gt_data.grad_fn is not None
-        )
+        use_cache = cached_p_gt_data is not None and x_t.requires_grad and cached_p_gt_data.grad_fn is not None
         if use_cache:
             assert cached_p_gt_data is not None
             conditional_loss = self.compute_conditional_loss(cached_p_gt_data, padding_mask)

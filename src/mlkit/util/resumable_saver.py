@@ -121,23 +121,23 @@ def _atomic_write_bytes(path: Path, data: bytes) -> None:
     os.replace(tmp_path, path)
 
 
-def _unlink_output(ctx: SampleContext, event: SaveEvent) -> None:
+def _unlink_output(ctx: SampleContext, _event: SaveEvent) -> None:
     if ctx.output_path is not None:
         Path(ctx.output_path).unlink(missing_ok=True)
 
 
-def _clear_runtime_fields(ctx: SampleContext, event: SaveEvent) -> None:
+def _clear_runtime_fields(ctx: SampleContext, _event: SaveEvent) -> None:
     ctx.output_path = None
     ctx.checksum = None
     ctx.error = None
 
 
-def _clear_output_fields(ctx: SampleContext, event: SaveEvent) -> None:
+def _clear_output_fields(ctx: SampleContext, _event: SaveEvent) -> None:
     ctx.output_path = None
     ctx.checksum = None
 
 
-def _can_succeed(ctx: SampleContext, event: SaveEvent) -> bool:
+def _can_succeed(ctx: SampleContext, _event: SaveEvent) -> bool:
     return ctx.output_path is not None and ctx.checksum is not None
 
 
@@ -244,9 +244,9 @@ class ResumableSaver:
 
     def _sync_to_db(
         self,
-        from_s: SaveStatus,
+        _from_s: SaveStatus,
         to_s: SaveStatus,
-        evt: SaveEvent,
+        _evt: SaveEvent,
         ctx: SampleContext,
     ) -> None:
         meta_json = json.dumps(ctx.meta) if ctx.meta is not None else None
@@ -370,7 +370,7 @@ class ResumableSaver:
         If ``fn`` raises, the failure is recorded and the exception re-raised.
         """
         if self.is_done(sample_id):
-            return self.load(sample_id)  # type: ignore[return-value]
+            return self.load(sample_id)
         sm, ctx = self._ensure_running(sample_id, meta)
         try:
             payload = fn()
@@ -383,7 +383,7 @@ class ResumableSaver:
             except Exception:
                 output_path.unlink(missing_ok=True)
                 raise
-            return payload  # type: ignore[return-value]
+            return payload
         except Exception as exc:
             if sm.current_state is SaveStatus.RUNNING:
                 ctx.error = str(exc)
@@ -472,10 +472,7 @@ class ResumableSaver:
 
 def build_sample_id(*parts: str | int, config_hash: str | None = None) -> str:
     """Build a stable filesystem-safe sample identifier from key parts."""
-    safe_parts = [
-        str(part).replace("/", "_").replace("\\", "_").replace("::", "__")
-        for part in parts
-    ]
+    safe_parts = [str(part).replace("/", "_").replace("\\", "_").replace("::", "__") for part in parts]
     normalized = "::".join(safe_parts)
     if config_hash is not None:
         safe_hash = str(config_hash).replace("/", "_").replace("\\", "_").replace("::", "__")

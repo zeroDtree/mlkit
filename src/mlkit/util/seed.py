@@ -10,10 +10,7 @@ def seed_everything(seed: int):
     """fix the seed for all the random number generators
 
     Args:
-        seed (int): the seed to use for the random number generators
-
-    Returns:
-        None
+        seed: the seed to use for the random number generators
     """
     random.seed(seed)
     os.environ["PYTHONHASHSEED"] = str(seed)

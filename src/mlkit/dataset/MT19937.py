@@ -198,7 +198,7 @@ def load_mt19937(
     return train_set, eval_set, eval_set
 
 
-def load_mt19937_8bits(seed=31, **kwargs):
+def load_mt19937_8bits(seed=31, **_kwargs):
     train_set, validation_set, test_set = load_mt19937(
         max_seq_len=256,
         num_samples=256,
@@ -211,7 +211,7 @@ def load_mt19937_8bits(seed=31, **kwargs):
     return train_set, train_set, train_set
 
 
-def load_mt19937_8bits_with_eval(seed=31, **kwargs):
+def load_mt19937_8bits_with_eval(seed=31, **_kwargs):
     train_set, validation_set, test_set = load_mt19937(
         max_seq_len=256,
         num_samples=256,
@@ -224,7 +224,7 @@ def load_mt19937_8bits_with_eval(seed=31, **kwargs):
     return train_set, validation_set, test_set
 
 
-def load_mt19937_12bits(seed=31, **kwargs):
+def load_mt19937_12bits(seed=31, **_kwargs):
     train_set, validation_set, test_set = load_mt19937(
         max_seq_len=4096,
         num_samples=4096,
@@ -237,7 +237,7 @@ def load_mt19937_12bits(seed=31, **kwargs):
     return train_set, train_set, train_set
 
 
-def load_mt19937_12bits_with_eval(seed=31, **kwargs):
+def load_mt19937_12bits_with_eval(seed=31, **_kwargs):
     train_set, validation_set, test_set = load_mt19937(
         max_seq_len=4096,
         num_samples=4096,
@@ -250,7 +250,7 @@ def load_mt19937_12bits_with_eval(seed=31, **kwargs):
     return train_set, validation_set, test_set
 
 
-def load_mt19937_16bits(seed=31, **kwargs):
+def load_mt19937_16bits(seed=31, **_kwargs):
     train_set, validation_set, test_set = load_mt19937(
         max_seq_len=4096,
         num_samples=4096,
@@ -263,7 +263,7 @@ def load_mt19937_16bits(seed=31, **kwargs):
     return train_set, train_set, train_set
 
 
-def load_mt19937_16bits_with_eval(seed=31, **kwargs):
+def load_mt19937_16bits_with_eval(seed=31, **_kwargs):
     train_set, validation_set, test_set = load_mt19937(
         max_seq_len=4096,
         num_samples=4096,
@@ -276,7 +276,7 @@ def load_mt19937_16bits_with_eval(seed=31, **kwargs):
     return train_set, validation_set, test_set
 
 
-def load_mt19937_32bits(seed=31, **kwargs):
+def load_mt19937_32bits(seed=31, **_kwargs):
     train_set, validation_set, test_set = load_mt19937(
         max_seq_len=1024,
         num_samples=100000,
@@ -288,7 +288,7 @@ def load_mt19937_32bits(seed=31, **kwargs):
     return train_set, train_set, train_set
 
 
-def load_mt19937_32bits_with_eval(seed=31, **kwargs):
+def load_mt19937_32bits_with_eval(seed=31, **_kwargs):
     train_set, validation_set, test_set = load_mt19937(
         max_seq_len=1024,
         num_samples=100000,

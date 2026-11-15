@@ -2,7 +2,7 @@ import torch.nn
 
 
 class GradientOffloadHookContext:
-    def __init__(self, model: torch.nn.Module, enable: bool, record_dict: dict, *args, **kwargs):
+    def __init__(self, model: torch.nn.Module, enable: bool, record_dict: dict, *_args, **_kwargs):
         """Offload gradients to CPU after each accumulation step.
 
         Args:

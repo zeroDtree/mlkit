@@ -1,3 +1,5 @@
+"""Hydra training example using :func:`run_experiment`; see ``docs/experiment.md``."""
+
 import os
 import sys
 
@@ -6,16 +8,21 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import hydra
 from omegaconf import DictConfig
 from shared.model import build_ttur_optimizer
-from shared.runner import run_experiment
 from utils import get_collate_fn, get_dataset, get_model
 
 from mlkit.generative_model.gan import GAN
+from mlkit.util.experiment import ExperimentSpec, run_experiment
 
 
-def post_train(cfg, model_result, pipeline, accelerator, train_set):
+def post_dist_teardown(ctx):
+    cfg = ctx.cfg
+    model_bundle = ctx.model_bundle
+    accelerator = ctx.accelerator
+    train_set = ctx.train_set
+    del ctx.train_set
     import matplotlib.pyplot as plt
 
-    gan: GAN = model_result["model"].model
+    gan: GAN = model_bundle["model"].model
     gan = gan.to(accelerator.device)
     gan.eval()
     if gan.ema is not None:
@@ -54,15 +61,15 @@ def _get_optimizer(model, cfg):
 
 @hydra.main(config_path=".", config_name="config", version_base=None)
 def main(cfg: DictConfig):
-    run_experiment(
-        cfg,
-        get_model,
-        get_dataset,
-        get_collate_fn,
-        post_train_fn=post_train,
-        get_optimizer_fn=_get_optimizer,
+    spec = ExperimentSpec(
+        get_model=get_model,
+        get_dataset=get_dataset,
+        get_collate=get_collate_fn,
+        get_optimizer=_get_optimizer,
+        post_dist_teardown=post_dist_teardown,
         save_dir_suffix=f"-latent:{cfg.gan.latent_dim}",
     )
+    run_experiment(cfg, spec)
 
 
 if __name__ == "__main__":

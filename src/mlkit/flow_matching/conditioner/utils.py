@@ -18,9 +18,9 @@ def get_accumulated_guidance(
     r"""Get the accumulated guidance vector for flow matching.
 
     Args:
-        x_t (Tensor): $x_t$
-        t (Tensor): $t$
-        padding_mask (Tensor): the padding mask
+        x_t: $x_t$
+        t: $t$
+        padding_mask: the padding mask
 
     Returns:
         Tensor: the accumulated guidance vector

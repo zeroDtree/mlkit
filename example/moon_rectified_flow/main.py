@@ -1,3 +1,5 @@
+"""Hydra training example using :func:`run_experiment`; see ``docs/experiment.md``."""
+
 import os
 import sys
 
@@ -5,18 +7,22 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import hydra
 from omegaconf import DictConfig
-from shared.runner import run_experiment
 from utils import get_collate_fn, get_dataset, get_model
 
+from mlkit.util.experiment import ExperimentSpec, run_experiment
 
-def post_train(cfg, model_result, pipeline, accelerator, train_set):
+_conditional_models: dict = {}
+
+
+def pre_dist_teardown(ctx):
+    """Train the conditional flow on every rank while the process group is alive."""
+    cfg = ctx.cfg
+    accelerator = ctx.accelerator
+    del ctx.model_bundle, ctx.pipeline, ctx.train_set
     from typing import Any, cast
 
-    import matplotlib.pyplot as plt
-    import torch
     from omegaconf import OmegaConf
     from shared.dataset import MoonsDataset
-    from torch import Tensor
     from utils import get_conditional_collate_fn, get_conditional_model
 
     from mlkit.pipeline.pipeline import LogConfig
@@ -28,8 +34,54 @@ def post_train(cfg, model_result, pipeline, accelerator, train_set):
         get_train_class,
     )
 
-    model = model_result["model"].model
-    sampling_hook_handlers = model_result["sampling_hook_handlers"]
+    cond_result = get_conditional_model(cfg)
+    cond_pipeline_model = cond_result["model"]
+
+    cond_dataset = MoonsDataset(n_samples=256)
+    cond_collate = get_conditional_collate_fn(cfg)
+
+    cond_opt = get_optimizer(cond_pipeline_model, cfg)
+    cond_sched = get_learing_rate_scheduler(cond_opt, accelerator, cond_dataset, cfg)
+
+    PipelineClass, TrainingConfigClass = get_train_class()
+    train_kwargs: dict[str, Any] = cast(dict[str, Any], OmegaConf.to_container(cfg.train, resolve=True))
+    train_kwargs["save_dir"] = get_new_save_dir(cfg.train.save_dir, cfg, suffix="_cfm")
+    cond_training_config = TrainingConfigClass(**train_kwargs)
+    log_kwargs: dict[str, Any] = cast(dict[str, Any], OmegaConf.to_container(cfg.log, resolve=True))
+    log_config = LogConfig(**log_kwargs)
+
+    logger = None
+    if accelerator.is_main_process:
+        logger = get_logger(name="cond_experiment", log_dir=get_and_create_new_log_dir(cfg.log.log_dir))
+
+    cond_pipeline = PipelineClass(
+        model=cond_pipeline_model,
+        train_dataset=cond_dataset,
+        eval_dataset=cond_dataset,
+        optimizers=(cond_opt, cond_sched),
+        training_config=cond_training_config,
+        log_config=log_config,
+        logger=logger,
+        collate_fn=cond_collate,
+    )
+    if ctx.reporter is not None:
+        cond_pipeline.add_callbacks([ctx.reporter.as_callback()])
+    cond_pipeline.train()
+    _conditional_models["model"] = cond_pipeline_model
+
+
+def post_dist_teardown(ctx):
+    import matplotlib.pyplot as plt
+    import torch
+    from torch import Tensor
+
+    cfg = ctx.cfg
+    model_bundle = ctx.model_bundle
+    accelerator = ctx.accelerator
+    del ctx.pipeline, ctx.train_set
+
+    model = model_bundle["model"].model
+    sampling_hook_handlers = model_bundle["sampling_hook_handlers"]
     model = model.to(accelerator.device)
     n_samples = 256
     n_steps = cfg.flow.n_discretization_steps
@@ -84,37 +136,8 @@ def post_train(cfg, model_result, pipeline, accelerator, train_set):
     fig.savefig("sampling_condition.png")
     plt.close(fig)
 
-    # --- Example-style conditional flow: train from scratch then sample ---
-    cond_result = get_conditional_model(cfg)
-    cond_pipeline_model = cond_result["model"]
-
-    cond_dataset = MoonsDataset(n_samples=256)
-    cond_collate = get_conditional_collate_fn(cfg)
-
-    cond_opt = get_optimizer(cond_pipeline_model, cfg)
-    cond_sched = get_learing_rate_scheduler(cond_opt, accelerator, cond_dataset, cfg)
-
-    PipelineClass, TrainingConfigClass = get_train_class()
-    train_kwargs: dict[str, Any] = cast(dict[str, Any], OmegaConf.to_container(cfg.train, resolve=True))
-    train_kwargs["save_dir"] = get_new_save_dir("checkpoints", cfg, suffix="_cfm")
-    cond_training_config = TrainingConfigClass(**train_kwargs)
-    log_kwargs: dict[str, Any] = cast(dict[str, Any], OmegaConf.to_container(cfg.log, resolve=True))
-    log_config = LogConfig(**log_kwargs)
-
-    cond_pipeline = PipelineClass(
-        model=cond_pipeline_model,
-        train_dataset=cond_dataset,
-        eval_dataset=cond_dataset,
-        optimizers=(cond_opt, cond_sched),
-        training_config=cond_training_config,
-        log_config=log_config,
-        logger=get_logger(name="cond_experiment", log_dir=get_and_create_new_log_dir(cfg.log.log_dir)),
-        collate_fn=cond_collate,
-    )
-    cond_pipeline.train()
-
-    # Sample with the framework
-    cond_flow = cond_pipeline_model.model  # RectifiedFlow (trained)
+    # Sample the conditional flow trained on every rank before the process group was destroyed.
+    cond_flow = _conditional_models["model"].model
     c_cfm = torch.randint(0, 2, (n_samples, 1), dtype=torch.float32, device=accelerator.device)
     colors_cfm = ["blue" if lbl == 0 else "orange" for lbl in c_cfm.squeeze().tolist()]
 
@@ -151,16 +174,19 @@ def post_train(cfg, model_result, pipeline, accelerator, train_set):
     plt.close(fig)
 
 
+SPEC = ExperimentSpec(
+    get_model=get_model,
+    get_dataset=get_dataset,
+    get_collate=get_collate_fn,
+    post_dist_teardown=post_dist_teardown,
+    pre_dist_teardown=pre_dist_teardown,
+    disable_train_hooks=True,
+)
+
+
 @hydra.main(config_path=".", config_name="config", version_base=None)
 def main(cfg: DictConfig):
-    run_experiment(
-        cfg,
-        get_model,
-        get_dataset,
-        get_collate_fn,
-        post_train_fn=post_train,
-        disable_train_hooks=True,
-    )
+    run_experiment(cfg, SPEC)
 
 
 if __name__ == "__main__":

@@ -13,16 +13,12 @@ def get_compute_graph(
     """Generate the computing graph of model (format default is pdf)
 
     Args:
-        model (torch.nn.Module): the model to generate the computing graph
-        input_shape (tuple, optional): the shape of the input. Defaults to None.
-        input (dict, optional): the input of the model. Defaults to None.
-        dir (str, optional): the directory to save the computing graph. Defaults to "compute_graph".
-        filename (str, optional): the name of the file to save the computing graph. Defaults to "simple_net_graph".
-        format (str, optional): the format of the computing graph. Defaults to "pdf".
-
-
-    Returns:
-        None
+        model: the model to generate the computing graph
+        input_shape: the shape of the input. Defaults to None.
+        input: the input of the model. Defaults to None.
+        dir: the directory to save the computing graph. Defaults to "compute_graph".
+        filename: the name of the file to save the computing graph. Defaults to "simple_net_graph".
+        format: the format of the computing graph. Defaults to "pdf".
     """
     assert input is not None or input_shape is not None, "error: input is None and input_shape is None"
     if input is None:

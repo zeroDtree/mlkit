@@ -17,7 +17,7 @@ def linear_decay_with_warmup(value, current, total, warmup_steps=0):
         return value * (1 - (current - warmup_steps) / (total - warmup_steps))
 
 
-def constant_with_warmup(value, current, total, warmup_steps=0):
+def constant_with_warmup(value, current, total, warmup_steps=0):  # noqa: ARG001
     if current < warmup_steps:
         return value * current / warmup_steps
     else:
@@ -62,9 +62,9 @@ class Scheduler:
             if value.get("schedule") is None:
                 raise ValueError(f"schedule of {key} is not defined")
             if value.get("warmup_steps") is None:
-                assert (
-                    value.get("warmup_ratio") is not None
-                ), f"warmup_ratio of {key} must be provided if warmup_steps is not provided"
+                assert value.get("warmup_ratio") is not None, (
+                    f"warmup_ratio of {key} must be provided if warmup_steps is not provided"
+                )
                 value["warmup_steps"] = int(self.total * value["warmup_ratio"])
 
     def step(self):
@@ -77,7 +77,7 @@ class Scheduler:
         """Get the current value of the scheduler
 
         Args:
-            key (str, optional): The key of the scheduler to get. If None, return the entire scheduler info. Defaults to None.
+            key: The key of the scheduler to get. If None, return the entire scheduler info. Defaults to None.
 
         Returns:
             dict[str, Any] or Any: The entire scheduler info or the value of the scheduler for the given key
@@ -163,9 +163,8 @@ class ObjectAttrsScheduler:
 
 
 if __name__ == "__main__":
-    import wandb
+    from mlkit.util.report import ReporterContext
 
-    wandb.init(project="scheduler-test")
     total = 100
     warmup_ratio = 0.1
 
@@ -191,6 +190,12 @@ if __name__ == "__main__":
         setter_methods={"x": "set_x"},
         getter_methods={"x": "get_x"},
     )
-    for i in range(total):
-        scheduler.step()
-        wandb.log(scheduler.get(), step=i)
+    with ReporterContext(
+        "mlflow",
+        run_name="scheduler-test",
+        config={},
+        mlflow={"experiment": "scheduler-test"},
+    ) as reporter:
+        for i in range(total):
+            scheduler.step()
+            reporter.log(scheduler.get(), step=i)

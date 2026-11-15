@@ -1,4 +1,4 @@
-from typing import Any, Callable, Tuple, cast
+from typing import Any, Callable, Tuple, cast, override
 
 import torch
 from torch import Tensor
@@ -122,7 +122,7 @@ class SO3Diffuser(LieGroupDiffuser):
         $$
 
         Args:
-            shape (Tuple[int, ...]): the shape of the sample
+            shape: the shape of the sample
 
         Returns:
             Tensor: the initial noise
@@ -141,13 +141,14 @@ class SO3Diffuser(LieGroupDiffuser):
         rotation_matrix = self.so3.exp(v=rotation_skew_symmetric)
         return rotation_matrix
 
+    @override
     def forward_process(
         self,
         x_0: Tensor,
         discrete_t: Tensor,
         mask: Tensor,
-        *args: Any,
-        **kwargs: Any,
+        *_args: Any,
+        **_kwargs: Any,
     ) -> dict:
         r"""Forward process
 
@@ -156,9 +157,9 @@ class SO3Diffuser(LieGroupDiffuser):
         $$
 
         Args:
-            x_0 (Tensor): the initial sample
-            discrete_t (Tensor): the discrete timestep
-            mask (Tensor): the mask
+            x_0: the initial sample
+            discrete_t: the discrete timestep
+            mask: the mask
             *args: additional arguments
             **kwargs: additional keyword arguments
 
@@ -183,7 +184,7 @@ class SO3Diffuser(LieGroupDiffuser):
         x_t = self.so3.multiply(rotation_matrix, x_0)  # (*macro_shape, n, 3, 3)
         return {"x_t": x_t}
 
-    def get_ground_truth_score(self, x_0: Tensor, x_t: Tensor, discrete_t: Tensor, padding_mask: Tensor) -> Tensor:
+    def get_ground_truth_score(self, x_0: Tensor, x_t: Tensor, discrete_t: Tensor, padding_mask: Tensor) -> Tensor:  # noqa: ARG002
         r"""Denoise Score Matching
 
         $$
@@ -191,10 +192,10 @@ class SO3Diffuser(LieGroupDiffuser):
         $$
 
         Args:
-            x_0 (Tensor): _description_
-            x_t (Tensor): _description_
-            discrete_t (Tensor): _description_
-            padding_mask (Tensor): _description_
+            x_0: _description_
+            x_t: _description_
+            discrete_t: _description_
+            padding_mask: _description_
 
         Returns:
             Tensor: _description_
@@ -214,9 +215,7 @@ class SO3Diffuser(LieGroupDiffuser):
         )
         return ground_truth_score
 
-    def compute_loss(
-        self, batch: dict[str, Any], *args: Any, **kwargs: Any
-    ) -> dict:  # ty: ignore[invalid-method-override]
+    def compute_loss(self, batch: dict[str, Any], *_args: Any, **_kwargs: Any) -> dict:  # ty: ignore[invalid-method-override]
         x_0 = batch["x_0"]
         padding_mask = batch["padding_mask"]
         macro_shape = self.get_macro_shape(x_0)
@@ -234,8 +233,8 @@ class SO3Diffuser(LieGroupDiffuser):
         x_t: Tensor,
         discrete_t: Tensor,
         padding_mask: Tensor | None = None,
-        *args: Any,
-        **kwargs: Any,
+        *_args: Any,
+        **_kwargs: Any,
     ) -> dict:
         r"""
         $$
@@ -282,7 +281,7 @@ class SO3Diffuser(LieGroupDiffuser):
         r"""Sample noise in Lie algebra, Skew-symmetric matrix
 
         Args:
-            macro_shape (Tuple[int, ...]): the macro shape of the noise
+            macro_shape: the macro shape of the noise
 
         Returns:
             Tensor: the noise in Lie algebra of shape $(*macro_shape, 3, 3)$

@@ -21,6 +21,7 @@ from torch.utils.data import Dataset
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
+from mlkit.pipeline.callback import BaseCallback, CallbackEvent  # noqa: E402
 from mlkit.pipeline.dist_pipeline_impl import MyDistributedPipeline, MyTrainingConfig  # noqa: E402
 from mlkit.pipeline.pipeline import LogConfig  # noqa: E402
 
@@ -53,6 +54,17 @@ class ZeroModel(torch.nn.Module):
         return {"loss": loss}
 
 
+class RecordingLog(BaseCallback):
+    def __init__(self):
+        self.payload: dict = {}
+
+    def on_event(self, event: CallbackEvent, *args, **kwargs) -> None:
+        del args
+        if event is not CallbackEvent.LOG:
+            return
+        self.payload.update(kwargs["metrics"])
+
+
 def collate_fn(batch):
     xs = torch.stack([b["x"] for b in batch])
     ys = torch.stack([b["y"] for b in batch])
@@ -62,7 +74,7 @@ def collate_fn(batch):
 def _make_pipeline(values: list[float]) -> MyDistributedPipeline:
     model = ZeroModel()
     optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
-    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda step: 1.0)
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda _step: 1.0)
     logger = logging.getLogger("eval_gather_metrics")
     logger.addHandler(logging.NullHandler())
     config = MyTrainingConfig(
@@ -101,9 +113,7 @@ def test_eval_calls_gather_for_metrics(monkeypatch):
         return original(x, *args, **kwargs)
 
     monkeypatch.setattr(pipeline.accelerator, "gather_for_metrics", tracking_gather)
-    import mlkit.pipeline.dist_pipeline_impl as impl
-
-    monkeypatch.setattr(impl.wandb, "log", lambda *a, **k: None)
+    pipeline.add_callbacks([RecordingLog()])
     pipeline.eval()
     assert calls["n"] > 0, "eval() must call accelerator.gather_for_metrics"
 
@@ -139,16 +149,10 @@ def test_eval_aggregates_across_simulated_shards(monkeypatch):
 
     monkeypatch.setattr(pipeline.accelerator, "gather_for_metrics", fake_gather)
 
-    logged = {}
-
-    def fake_wandb_log(payload, step=None):
-        logged.update(payload)
-
-    import mlkit.pipeline.dist_pipeline_impl as impl
-
-    monkeypatch.setattr(impl.wandb, "log", fake_wandb_log)
-
+    recorder = RecordingLog()
+    pipeline.add_callbacks([recorder])
     pipeline.eval()
+    logged = recorder.payload
 
     # Expected: all batch-mean losses from local + other, each repeated batch_size times.
     # Local batches: [1,2] mean=2.5, [3,4] mean=12.5  (y^2 means: (1+4)/2=2.5, (9+16)/2=12.5)

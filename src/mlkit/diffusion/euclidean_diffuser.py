@@ -1,5 +1,5 @@
 from abc import abstractmethod
-from typing import Any, Callable, Optional, Tuple, cast
+from typing import Any, Callable, Optional, Tuple, cast, override
 
 import numpy as np
 import torch
@@ -100,7 +100,7 @@ class EuclideanDiffuser(BaseDiffuser):
         device,
         x_init_posterior: Optional[Tensor] = None,
         return_all=False,
-        *args: Any,
+        *_args: Any,
         **kwargs: Any,
     ) -> dict:
         if x_init_posterior is not None:
@@ -178,6 +178,7 @@ class EuclideanDiffuser(BaseDiffuser):
         return {"x": x_t, "x_list": x_list, "E_x0_xt_list": E_x0_xt_list}
 
     @torch.no_grad()
+    @override
     def inpainting(
         self,
         x: Tensor,
@@ -314,8 +315,8 @@ class EuclideanDiffuser(BaseDiffuser):
         t,
         padding_mask,
         inpainting_mask,
-        x_prior,
-        *args,
+        x_prior,  # noqa: ARG002
+        *_args,
         **kwargs,
     ) -> Tensor:
         x_0 = x_known

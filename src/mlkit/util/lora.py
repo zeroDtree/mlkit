@@ -8,7 +8,7 @@ def find_linear_modules(model) -> List[str]:
     """Find the linear modules in a model
 
     Args:
-        model (torch.nn.Module): the model to find the linear modules
+        model: the model to find the linear modules
 
     Returns:
         List[str]: the names of the linear modules
@@ -27,8 +27,8 @@ def get_lora_model(model, lora_config):
     """Get a LoRA model
 
     Args:
-        model (torch.nn.Module): the model to get the LoRA model
-        lora_config (LoraConfig): the LoRA configuration
+        model: the model to get the LoRA model
+        lora_config: the LoRA configuration
 
     Returns:
         torch.nn.Module: the LoRA model
