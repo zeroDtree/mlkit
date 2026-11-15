@@ -1,13 +1,13 @@
 # Shell scripts
 
-Invoke as `bash shell_script/...` from the project root. Scripts then `cd` to the repo via `BASH_SOURCE`.
+Invoke as `bash scripts/...` from the project root. Scripts then `cd` to the repo via `BASH_SOURCE`.
 
 Training artifacts are relative to that directory, so these launchers write `<repo>/artifacts/`. Starting the same example from inside `example/<name>/` writes `example/<name>/artifacts/` instead. Resume a run from the directory where it was started.
 
 ## Post-clone check
 
 ```bash
-bash shell_script/init-check.sh
+bash scripts/init-check.sh
 ```
 
 This syncs dependencies, then runs pytest, ruff, and ty. It installs the nbstripout git filter when this directory is a git work tree. Set `MC_ENABLE_PROXY=1` before the script to enable the HTTP proxy for `uv sync`.
@@ -27,7 +27,7 @@ GPU training or eval. The launcher exits when no GPU is visible. It selects `con
 
 ```bash
 export MC_ENABLE_PROXY=1
-bash shell_script/mc-run-python.sh example/butterfly_edm/main.py
+bash scripts/mc-run-python.sh example/butterfly_edm/main.py
 ```
 
 Write the proxy port into the port file before enabling the proxy.
@@ -35,8 +35,8 @@ Write the proxy port into the port file before enabling the proxy.
 CPU, or any run that should not use Accelerate:
 
 ```bash
-bash shell_script/run-python.sh example/butterfly_edm/main.py
-bash shell_script/run-python.sh -m pytest
+bash scripts/run-python.sh example/butterfly_edm/main.py
+bash scripts/run-python.sh -m pytest
 ```
 
 Commands are appended under `artifacts/command_logs/`.

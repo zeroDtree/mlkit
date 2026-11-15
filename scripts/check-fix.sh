@@ -4,7 +4,7 @@
 # Auto-fix lint style and run type checks from the project root.
 #
 # Usage:
-#   bash shell_script/check-fix.sh
+#   bash scripts/check-fix.sh
 #
 # Runs ruff with --fix (src/mlkit, tests, example per ruff.toml), format, verify, then ty.
 #

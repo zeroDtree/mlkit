@@ -96,4 +96,4 @@ class FileManager:
 if __name__ == "__main__":
     print("start")
     fm = FileManager()
-    fm.copy_files_to_target(tgt_dir="test", src_file_list=["shell_script/linter.sh"], micro_deep=2)
+    fm.copy_files_to_target(tgt_dir="test", src_file_list=["scripts/check-fix.sh"], micro_deep=2)

@@ -42,7 +42,7 @@ Project root [`.mustache`](../.mustache) is wired in [`.vscode/settings.json`](.
 To bulk-fix legacy ``Args`` type lines in existing docstrings:
 
 ```bash
-python3 shell_script/normalize_docstrings.py
+python3 scripts/normalize_docstrings.py
 ```
 
 Canonical examples: `mlkit.util.report.run_file`, `mlkit.util.failure`, `mlkit.util.experiment.types`.

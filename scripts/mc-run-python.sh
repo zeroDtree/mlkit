@@ -5,7 +5,7 @@
 # (CUDA_VISIBLE_DEVICES or nvidia-smi). For CPU, use run-python.sh.
 #
 # Usage:
-#   shell_script/mc-run-python.sh SCRIPT [args...]
+#   scripts/mc-run-python.sh SCRIPT [args...]
 #
 # Picks configs/accelerate/acc_cfg_<N>cards.yaml for the visible GPU count.
 # Available counts: 1, 2, 3, 4, 8.
@@ -16,7 +16,7 @@
 #
 # Under Slurm (SLURM_JOB_ID set), MC_SKIP_UV_SYNC defaults to 1.
 # Example:
-#   bash shell_script/mc-run-python.sh example/butterfly_edm/main.py
+#   bash scripts/mc-run-python.sh example/butterfly_edm/main.py
 # @help-end
 
 # @help-options-begin
@@ -86,7 +86,7 @@ n_cards="${n_cards// /}"
 
 if [[ -z "$n_cards" || "$n_cards" -lt 1 ]]; then
 	echo "Error: mc-run-python.sh is GPU-only (CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-unset})." >&2
-	echo "Use shell_script/run-python.sh for CPU runs." >&2
+	echo "Use scripts/run-python.sh for CPU runs." >&2
 	exit 1
 fi
 

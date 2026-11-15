@@ -4,7 +4,7 @@
 # Run a Python script from the project root with uv.
 #
 # Usage:
-#   shell_script/run-python.sh SCRIPT [args...]
+#   scripts/run-python.sh SCRIPT [args...]
 #
 # Pass -m before a module name to run a module instead of a script.
 #
@@ -13,8 +13,8 @@
 #
 # Under Slurm (SLURM_JOB_ID set), MC_SKIP_UV_SYNC defaults to 1.
 # Example:
-#   bash shell_script/run-python.sh example/butterfly_edm/main.py
-#   bash shell_script/run-python.sh -m pytest
+#   bash scripts/run-python.sh example/butterfly_edm/main.py
+#   bash scripts/run-python.sh -m pytest
 # @help-end
 
 # @help-options-begin

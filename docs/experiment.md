@@ -114,10 +114,10 @@ From the repo root you can use:
 
 ```bash
 uv run python example/butterfly_edm/main.py
-bash shell_script/mc-run-python.sh example/butterfly_edm/main.py
+bash scripts/mc-run-python.sh example/butterfly_edm/main.py
 ```
 
-See [shell_script/README.md](https://github.com/zeroDtree/my_pkg_py/blob/main/shell_script/README.md) for GPU launchers and environment variables.
+See [scripts/README.md](https://github.com/zeroDtree/my_pkg_py/blob/main/scripts/README.md) for GPU launchers and environment variables.
 
 ## See also
 

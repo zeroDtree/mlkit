@@ -4,7 +4,7 @@
 # Install dependencies and run the post-init checks from the project root.
 #
 # Usage:
-#   bash shell_script/init-check.sh
+#   bash scripts/init-check.sh
 #
 # Syncs the dev group, then runs pytest, ruff, and ty.
 # Installs the nbstripout git filter when this directory is a git work tree.

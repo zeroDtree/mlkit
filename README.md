@@ -65,7 +65,7 @@ From the repo root, the same script writes to `<repo>/artifacts/` instead:
 
 ```bash
 uv run python example/butterfly_edm/main.py
-bash shell_script/mc-run-python.sh example/butterfly_edm/main.py
+bash scripts/mc-run-python.sh example/butterfly_edm/main.py
 ```
 
 Config defaults live in the `config.yaml` (or `config_<variant>.yaml`) next to each script.
@@ -90,7 +90,7 @@ uv run ty check
 uv run pytest
 ```
 
-Run launchers from the repository root with `bash shell_script/...`. See [shell_script/README.md](shell_script/README.md).
+Run launchers from the repository root with `bash scripts/...`. See [scripts/README.md](scripts/README.md).
 
 ## Docs
 
