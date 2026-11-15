@@ -1,20 +1,67 @@
+import warnings
 from collections.abc import Mapping
 from typing import Any
 
+from .base import NullReporter, Reporter
 from .callback import NullReportCallback, ReportCallback
-from .mlflow import MLflowCallback
+from .mlflow import MLflowCallback, MLflowReporter
 from .run_file import resume_run_id, write_report_run
-from .wandb import WandbCallback
+from .scope import ReporterScope
+from .wandb import WandbCallback, WandbReporter
 
 __all__ = [
     "MLflowCallback",
+    "MLflowReporter",
+    "NullReporter",
     "NullReportCallback",
     "ReportCallback",
+    "Reporter",
+    "ReporterScope",
     "WandbCallback",
+    "WandbReporter",
+    "get_reporter",
     "reporter_callback",
     "resume_run_id",
     "write_report_run",
 ]
+
+
+def get_reporter(
+    kind: str,
+    *,
+    run_name: str,
+    config: Mapping[str, Any],
+    mlflow: Mapping[str, Any] | None = None,
+    wandb: Mapping[str, Any] | None = None,
+    resume_run_id: str | None = None,
+) -> Reporter:
+    """Build a reporter for the given kind. The run is not open until ``open()``."""
+    kind_name = kind.strip().lower()
+    if kind_name == "none":
+        return NullReporter()
+    if kind_name == "mlflow":
+        settings = dict(mlflow or {})
+        return MLflowReporter(
+            tracking_uri=settings.get("tracking_uri") or None,
+            experiment=str(settings.get("experiment") or "default"),
+            run_name=run_name,
+            config=config,
+            run_id=resume_run_id,
+            artifact_location=settings.get("artifact_location") or None,
+        )
+    if kind_name == "wandb":
+        settings = dict(wandb or {})
+        return WandbReporter(
+            project=settings.get("project"),
+            name=run_name,
+            group=settings.get("group"),
+            entity=settings.get("entity"),
+            mode=settings.get("mode"),
+            reinit=bool(settings.get("reinit", True)),
+            config=config,
+            run_id=resume_run_id,
+        )
+    raise ValueError(f"Unknown reporter: {kind}")
 
 
 def reporter_callback(
@@ -26,50 +73,17 @@ def reporter_callback(
     wandb: Mapping[str, Any] | None = None,
     resume_run_id: str | None = None,
 ) -> ReportCallback:
-    """Build the report callback selected by ``kind``.
-
-    The returned callback opens its run when entered and closes it when the
-    context exits. ``"none"`` returns a callback that discards every payload.
-
-    Args:
-        kind: ``"mlflow"``, ``"wandb"``, or ``"none"``.
-        run_name: run name passed to the selected backend.
-        config: resolved config stored with the run.
-        mlflow: MLflow settings with ``tracking_uri``, ``experiment``, and
-            optional ``artifact_location``.
-        wandb: wandb settings with ``project``, ``group``, ``entity``, ``mode``,
-            and ``reinit``.
-        resume_run_id: existing run to continue. ``None`` starts a new run.
-
-    Returns:
-        A callback that has not opened its run yet.
-
-    Raises:
-        ValueError: ``kind`` is not one of the known reporters.
-    """
-    kind_name = kind.strip().lower()
-    if kind_name == "none":
-        return NullReportCallback()
-    if kind_name == "mlflow":
-        settings = dict(mlflow or {})
-        return MLflowCallback(
-            tracking_uri=settings.get("tracking_uri") or None,
-            experiment=str(settings.get("experiment") or "default"),
-            run_name=run_name,
-            config=config,
-            run_id=resume_run_id,
-            artifact_location=settings.get("artifact_location") or None,
-        )
-    if kind_name == "wandb":
-        settings = dict(wandb or {})
-        return WandbCallback(
-            project=settings.get("project"),
-            name=run_name,
-            group=settings.get("group"),
-            entity=settings.get("entity"),
-            mode=settings.get("mode"),
-            reinit=bool(settings.get("reinit", True)),
-            config=config,
-            run_id=resume_run_id,
-        )
-    raise ValueError(f"Unknown reporter: {kind}")
+    """Deprecated: use :func:`get_reporter` and :meth:`Reporter.as_callback`."""
+    warnings.warn(
+        "reporter_callback is deprecated; use get_reporter(...).as_callback()",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return get_reporter(
+        kind,
+        run_name=run_name,
+        config=config,
+        mlflow=mlflow,
+        wandb=wandb,
+        resume_run_id=resume_run_id,
+    ).as_callback()

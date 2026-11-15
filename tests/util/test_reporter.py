@@ -26,7 +26,7 @@ def test_reporter_callback_rejects_unknown_kind():
         reporter_callback("nope", run_name="run", config={})
 
 
-def test_report_callback_cannot_be_constructed():
+def test_report_callback_needs_a_reporter():
     with pytest.raises(TypeError):
         ReportCallback()
 
@@ -37,6 +37,10 @@ class _FakeMlflow:
         self.start_error: BaseException | None = None
         self.log_dict_error: BaseException | None = None
         self.forced_run_id: str | None = None
+        self._active_run: object | None = None
+
+    def active_run(self) -> object | None:
+        return self._active_run
 
     def set_tracking_uri(self, uri: object) -> None:
         self.calls.append(("uri", uri))
@@ -55,7 +59,9 @@ class _FakeMlflow:
         else:
             resolved = "new-run"
         info = type("Info", (), {"run_id": resolved})()
-        return type("ActiveRun", (), {"info": info})()
+        run = type("ActiveRun", (), {"info": info})()
+        self._active_run = run
+        return run
 
     def log_dict(self, data: object, artifact_file: object) -> None:
         self.calls.append(("dict", artifact_file, data))
@@ -64,6 +70,7 @@ class _FakeMlflow:
 
     def end_run(self, status: object = None) -> None:
         self.calls.append(("end", status))
+        self._active_run = None
 
 
 def test_mlflow_reporter_defaults_to_sqlite_without_env(monkeypatch):

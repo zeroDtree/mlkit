@@ -1,93 +1,61 @@
-from abc import abstractmethod
 from collections.abc import Mapping
 from typing import Any, cast
 
 from mlkit.pipeline.callback import BaseCallback, CallbackEvent
 
+from .base import Reporter, NullReporter
 from .run_file import write_report_run
 
 
 class ReportCallback(BaseCallback):
-    """Experiment-tracking callback.
+    """Forwards pipeline events to a :class:`Reporter`."""
 
-    ``log`` writes one metric payload. ``store_config`` replaces the config
-    stored with the run. Entering the callback opens the run, and leaving it
-    closes the run.
-    """
+    def __init__(self, reporter: Reporter) -> None:
+        self._reporter = reporter
 
-    backend: str = "none"
-    run_id: str | None = None
+    @property
+    def backend(self) -> str:
+        return self._reporter.backend
+
+    @backend.setter
+    def backend(self, value: str) -> None:
+        self._reporter.backend = value
+
+    @property
+    def run_id(self) -> str | None:
+        return self._reporter.run_id
+
+    @run_id.setter
+    def run_id(self, value: str | None) -> None:
+        self._reporter.run_id = value
 
     def on_event(self, event: CallbackEvent, *_args: object, **kwargs: object) -> None:
-        """Record a log payload or the run id of a checkpoint.
-
-        Args:
-            event: ``LOG`` writes metrics. ``PRE_FINALIZE_SAVE`` writes the run id
-                into ``checkpoint_dir`` when a run is open.
-            *_args: unused positional arguments from the pipeline.
-            **kwargs: ``metrics`` and ``step`` for ``LOG``. ``checkpoint_dir``
-                for ``PRE_FINALIZE_SAVE``.
-        """
         if event is CallbackEvent.LOG:
             metrics = kwargs.get("metrics")
             if not isinstance(metrics, Mapping):
                 return
             step = kwargs.get("step")
-            self.log(cast(Mapping[str, Any], metrics), step=step if isinstance(step, int) else None)
+            self._reporter.log(cast(Mapping[str, Any], metrics), step=step if isinstance(step, int) else None)
             return
         if event is not CallbackEvent.PRE_FINALIZE_SAVE:
             return
         directory = kwargs.get("checkpoint_dir")
-        if not isinstance(directory, str) or not isinstance(self.backend, str):
+        if not isinstance(directory, str):
             return
-        if not isinstance(self.run_id, str) or self.run_id == "":
+        run_id = self._reporter.run_id
+        if not isinstance(run_id, str) or run_id == "":
             return
-        write_report_run(directory, backend=self.backend, run_id=self.run_id)
+        write_report_run(directory, backend=self._reporter.backend, run_id=run_id)
 
-    @abstractmethod
     def log(self, data: Mapping[str, Any], *, step: int | None = None) -> None:
-        """Record one payload.
+        self._reporter.log(data, step=step)
 
-        Args:
-            data: values to record.
-            step: optional step index for this payload.
-        """
-        ...
-
-    @abstractmethod
     def store_config(self, config: Mapping[str, Any]) -> None:
-        """Replace the config stored with the run.
-
-        Args:
-            config: resolved config after the scheduler has rewritten it.
-        """
-        ...
-
-    @abstractmethod
-    def __enter__(self) -> "ReportCallback":
-        """Open the run and return this callback."""
-        ...
-
-    @abstractmethod
-    def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
-        """Close the run. A raised exception marks the run failed."""
-        ...
+        self._reporter.store_config(config)
 
 
 class NullReportCallback(ReportCallback):
-    """Callback that discards metrics and does not open a run."""
+    """Pipeline callback backed by :class:`NullReporter`."""
 
-    backend = "none"
-
-    def log(self, data: Mapping[str, Any], *, step: int | None = None) -> None:
-        """Discard the payload."""
-
-    def store_config(self, config: Mapping[str, Any]) -> None:
-        """Discard a replacement config."""
-
-    def __enter__(self) -> "NullReportCallback":
-        """Return this callback without opening a run."""
-        return self
-
-    def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
-        """Leave the callback without closing a run."""
+    def __init__(self) -> None:
+        super().__init__(NullReporter())

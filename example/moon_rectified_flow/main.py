@@ -5,15 +5,17 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import hydra
 from omegaconf import DictConfig
-from shared.runner import run_experiment
+from shared.runner import ExperimentSpec, run_experiment
 from utils import get_collate_fn, get_dataset, get_model
 
 _conditional_models: dict = {}
 
 
-def after_train(cfg, model_result, pipeline, accelerator, train_set, report_callback):
+def pre_dist_teardown(ctx):
     """Train the conditional flow on every rank while the process group is alive."""
-    del model_result, pipeline, train_set
+    cfg = ctx.cfg
+    accelerator = ctx.accelerator
+    del ctx.model_result, ctx.pipeline, ctx.train_set
     from typing import Any, cast
 
     from omegaconf import OmegaConf
@@ -59,16 +61,21 @@ def after_train(cfg, model_result, pipeline, accelerator, train_set, report_call
         logger=logger,
         collate_fn=cond_collate,
     )
-    if report_callback is not None:
-        cond_pipeline.add_callbacks([report_callback])
+    if ctx.reporter is not None:
+        cond_pipeline.add_callbacks([ctx.reporter.as_callback()])
     cond_pipeline.train()
     _conditional_models["model"] = cond_pipeline_model
 
 
-def post_train(cfg, model_result, pipeline, accelerator, train_set):
+def post_dist_teardown(ctx):
     import matplotlib.pyplot as plt
     import torch
     from torch import Tensor
+
+    cfg = ctx.cfg
+    model_result = ctx.model_result
+    accelerator = ctx.accelerator
+    del ctx.pipeline, ctx.train_set
 
     model = model_result["model"].model
     sampling_hook_handlers = model_result["sampling_hook_handlers"]
@@ -164,17 +171,19 @@ def post_train(cfg, model_result, pipeline, accelerator, train_set):
     plt.close(fig)
 
 
+SPEC = ExperimentSpec(
+    get_model=get_model,
+    get_dataset=get_dataset,
+    get_collate=get_collate_fn,
+    post_dist_teardown=post_dist_teardown,
+    pre_dist_teardown=pre_dist_teardown,
+    disable_train_hooks=True,
+)
+
+
 @hydra.main(config_path=".", config_name="config", version_base=None)
 def main(cfg: DictConfig):
-    run_experiment(
-        cfg,
-        get_model,
-        get_dataset,
-        get_collate_fn,
-        post_train_fn=post_train,
-        after_train_fn=after_train,
-        disable_train_hooks=True,
-    )
+    run_experiment(cfg, SPEC)
 
 
 if __name__ == "__main__":

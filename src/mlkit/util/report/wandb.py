@@ -1,6 +1,7 @@
 from collections.abc import Mapping
 from typing import Any, Literal
 
+from .base import Reporter
 from .callback import ReportCallback
 from .data import _plain_data
 
@@ -21,8 +22,8 @@ def _wandb_mode(mode: object) -> WandbMode | None:
     raise ValueError(f"Unknown wandb mode: {mode}")
 
 
-class WandbCallback(ReportCallback):
-    """Callback that writes a run through ``wandb.log``."""
+class WandbReporter(Reporter):
+    """wandb tracking backend."""
 
     def __init__(
         self,
@@ -35,19 +36,7 @@ class WandbCallback(ReportCallback):
         reinit: bool,
         config: Mapping[str, Any],
         run_id: str | None = None,
-    ):
-        """Initialize the callback.
-
-        Args:
-            project: wandb project.
-            name: run name.
-            group: wandb group.
-            entity: wandb entity.
-            mode: wandb mode, for example ``"offline"``.
-            reinit: passed through to ``wandb.init``.
-            config: resolved config attached to the run.
-            run_id: existing run to continue. ``None`` starts a new run.
-        """
+    ) -> None:
         self.backend = "wandb"
         self.project = project
         self.name = name
@@ -57,22 +46,13 @@ class WandbCallback(ReportCallback):
         self.reinit = reinit
         self.config = config
         self.run_id = run_id
-        self._started = False
+        self._auto_close = False
+        self._opened = False
 
-    def __enter__(self) -> "WandbCallback":
+    def open(self) -> None:
         import wandb
 
-        if self.run_id is None:
-            run = wandb.init(
-                reinit=self.reinit,
-                mode=_wandb_mode(self.mode),
-                project=self.project,
-                name=self.name,
-                group=self.group,
-                entity=self.entity,
-                config=_plain_data(self.config),
-            )
-        else:
+        if self.run_id is not None:
             run = wandb.init(
                 reinit=self.reinit,
                 mode=_wandb_mode(self.mode),
@@ -84,46 +64,51 @@ class WandbCallback(ReportCallback):
                 id=self.run_id,
                 resume="allow",
             )
+            self._auto_close = True
+        elif wandb.run is None:
+            run = wandb.init(
+                reinit=self.reinit,
+                mode=_wandb_mode(self.mode),
+                project=self.project,
+                name=self.name,
+                group=self.group,
+                entity=self.entity,
+                config=_plain_data(self.config),
+            )
+            self._auto_close = True
+        else:
+            run = wandb.run
+            wandb.config.update(_plain_data(self.config), allow_val_change=True)
+            self._auto_close = False
+
         try:
             run_id = None if run is None else run.id
             if not isinstance(run_id, str) or run_id == "":
                 raise RuntimeError("wandb did not start a run")
             self.run_id = run_id
         except Exception:
-            wandb.finish(exit_code=1)
+            if self._auto_close:
+                wandb.finish(exit_code=1)
             raise
-        self._started = True
-        return self
+        self._opened = True
 
-    def __exit__(self, exc_type, exc, tb) -> None:
-        if not self._started:
-            return None
+    def close(self, *, success: bool) -> None:
+        if not self._opened or not self._auto_close:
+            return
         import wandb
 
-        wandb.finish(exit_code=1 if exc_type is not None else 0)
-        self._started = False
-        return None
+        wandb.finish(exit_code=0 if success else 1)
+        self._opened = False
 
     def store_config(self, config: Mapping[str, Any]) -> None:
-        """Replace the run config with the one training actually used.
-
-        Args:
-            config: resolved config after the scheduler has rewritten it.
-        """
         self.config = config
-        if not self._started:
+        if not self._opened:
             return
         import wandb
 
         wandb.config.update(_plain_data(self.config), allow_val_change=True)
 
     def log(self, data: Mapping[str, Any], *, step: int | None = None) -> None:
-        """Forward the payload to ``wandb.log``.
-
-        Args:
-            data: values to record.
-            step: optional step index for this payload.
-        """
         import wandb
 
         payload = dict(data)
@@ -131,3 +116,45 @@ class WandbCallback(ReportCallback):
             wandb.log(payload)
         else:
             wandb.log(payload, step=step)
+
+
+class WandbCallback(ReportCallback):
+    """Deprecated: prefer :class:`WandbReporter` with :class:`ReporterScope`."""
+
+    def __init__(
+        self,
+        *,
+        project: str | None,
+        name: str,
+        group: str | None,
+        entity: str | None,
+        mode: str | None,
+        reinit: bool,
+        config: Mapping[str, Any],
+        run_id: str | None = None,
+    ) -> None:
+        self._lifecycle_open = False
+        super().__init__(
+            WandbReporter(
+                project=project,
+                name=name,
+                group=group,
+                entity=entity,
+                mode=mode,
+                reinit=reinit,
+                config=config,
+                run_id=run_id,
+            )
+        )
+
+    def __enter__(self) -> "WandbCallback":
+        self._reporter.open()
+        self._lifecycle_open = True
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+        del exc, tb
+        if self._lifecycle_open:
+            self._reporter.close(success=exc_type is None)
+            self._lifecycle_open = False
+        return None

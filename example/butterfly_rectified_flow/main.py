@@ -5,13 +5,18 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import hydra
 from omegaconf import DictConfig
-from shared.runner import run_experiment
+from shared.runner import ExperimentSpec, run_experiment
 from utils import get_collate_fn, get_dataset, get_model
 
 from mlkit.util.huggingface import HF_MIRROR  # noqa: F401
 
 
-def post_train(cfg, model_result, pipeline, accelerator, train_set):
+def post_dist_teardown(ctx):
+    cfg = ctx.cfg
+    model_result = ctx.model_result
+    pipeline = ctx.pipeline
+    accelerator = ctx.accelerator
+    del ctx.train_set
     from diffusers.utils.pil_utils import make_image_grid, numpy_to_pil
 
     model = get_model(
@@ -35,9 +40,17 @@ def post_train(cfg, model_result, pipeline, accelerator, train_set):
     image_grid.save(os.path.join(save_dir, f"fm_uc_{cfg.flow.n_inference_steps}.png"))
 
 
+SPEC = ExperimentSpec(
+    get_model=get_model,
+    get_dataset=get_dataset,
+    get_collate=get_collate_fn,
+    post_dist_teardown=post_dist_teardown,
+)
+
+
 @hydra.main(config_path=".", config_name="config", version_base=None)
 def main(cfg: DictConfig):
-    run_experiment(cfg, get_model, get_dataset, get_collate_fn, post_train_fn=post_train)
+    run_experiment(cfg, SPEC)
 
 
 if __name__ == "__main__":

@@ -3,17 +3,12 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from .base import Reporter
 from .callback import ReportCallback
 from .data import _finite_metrics, _plain_data
 
 
 def _local_sqlite_path(uri: str) -> Path | None:
-    """Return the database file behind a local sqlite URI.
-
-    ``None`` means there is no file to prepare: the URI is not sqlite, the path
-    is empty (``sqlite:///``), or it is an in-memory database
-    (``sqlite:///:memory:``).
-    """
     prefix = "sqlite:///"
     if not uri.startswith(prefix):
         return None
@@ -24,40 +19,18 @@ def _local_sqlite_path(uri: str) -> Path | None:
 
 
 def _prepare_sqlite_dir(uri: str) -> None:
-    """Create the parent directory of a local sqlite database file.
-
-    Sqlite creates the database file but not its parent. Remote URIs, an empty
-    path (``sqlite:///``), and in-memory databases are skipped.
-    """
     db_path = _local_sqlite_path(uri)
     if db_path is not None:
         db_path.parent.mkdir(parents=True, exist_ok=True)
 
 
 def _prepare_artifact_dir(artifact_location: str) -> None:
-    """Create a local artifact directory and any missing parents.
-
-    Remote URIs that contain ``://`` are left untouched.
-    """
     if "://" not in artifact_location:
         Path(artifact_location).mkdir(parents=True, exist_ok=True)
 
 
-class MLflowCallback(ReportCallback):
-    """Callback that writes a run to MLflow Tracking.
-
-    Finite numbers go to ``log_metrics``. The resolved config is stored as a
-    ``config.yaml`` artifact. Other values are left for the text logger.
-
-    When ``tracking_uri`` is omitted and ``MLFLOW_TRACKING_URI`` is unset, the
-    run is stored in a local sqlite database, ``sqlite:///mlflow.db``. MLflow
-    3 no longer accepts the ``./mlruns`` file store unless that store is
-    explicitly opted into.
-
-    When ``artifact_location`` is set and the experiment does not exist yet,
-    the experiment is created with that directory. An existing experiment keeps
-    its artifact location. Paths are relative to the current working directory.
-    """
+class MLflowReporter(Reporter):
+    """MLflow tracking backend."""
 
     def __init__(
         self,
@@ -68,20 +41,7 @@ class MLflowCallback(ReportCallback):
         config: Mapping[str, Any],
         run_id: str | None = None,
         artifact_location: str | None = None,
-    ):
-        """Initialize the callback.
-
-        Args:
-            tracking_uri: MLflow tracking URI. ``None`` keeps
-                ``MLFLOW_TRACKING_URI`` when that variable is set, and otherwise
-                uses ``sqlite:///mlflow.db``.
-            experiment: experiment name.
-            run_name: run name.
-            config: resolved config stored as an artifact.
-            run_id: existing run to continue. ``None`` starts a new run.
-            artifact_location: artifact directory for a new experiment.
-                ``None`` leaves the directory to MLflow.
-        """
+    ) -> None:
         self.backend = "mlflow"
         self.tracking_uri = tracking_uri or None
         self.experiment = experiment
@@ -89,9 +49,10 @@ class MLflowCallback(ReportCallback):
         self.config = config
         self.run_id = run_id
         self.artifact_location = artifact_location or None
-        self._started = False
+        self._auto_close = False
+        self._opened = False
 
-    def __enter__(self) -> "MLflowCallback":
+    def open(self) -> None:
         import mlflow
 
         if self.tracking_uri:
@@ -113,48 +74,54 @@ class MLflowCallback(ReportCallback):
                 if getattr(exc, "error_code", None) != "RESOURCE_ALREADY_EXISTS":
                     raise
         mlflow.set_experiment(self.experiment)
-        active = mlflow.start_run(run_id=self.run_id, run_name=self.run_name)
-        try:
-            run_id = active.info.run_id
-            if not isinstance(run_id, str) or run_id == "":
-                raise RuntimeError("MLflow did not start a run")
-            self.run_id = run_id
-            mlflow.log_dict(_plain_data(self.config), "config.yaml")
-        except Exception:
-            mlflow.end_run(status="FAILED")
-            raise
-        self._started = True
-        return self
 
-    def __exit__(self, exc_type, exc, tb) -> None:
-        if not self._started:
-            return None
+        started_new = False
+        try:
+            if self.run_id is not None:
+                active = mlflow.start_run(run_id=self.run_id, run_name=self.run_name)
+                self._auto_close = True
+                started_new = True
+            elif mlflow.active_run() is None:
+                active = mlflow.start_run(run_name=self.run_name)
+                self._auto_close = True
+                started_new = True
+            else:
+                active = mlflow.active_run()
+                self._auto_close = False
+
+            if started_new and active is not None:
+                run_id = active.info.run_id
+                if not isinstance(run_id, str) or run_id == "":
+                    raise RuntimeError("MLflow did not start a run")
+                self.run_id = run_id
+                mlflow.log_dict(_plain_data(self.config), "config.yaml")
+            elif self.run_id is None and active is not None:
+                attached_id = active.info.run_id
+                if isinstance(attached_id, str) and attached_id != "":
+                    self.run_id = attached_id
+        except Exception:
+            if started_new and self._auto_close:
+                mlflow.end_run(status="FAILED")
+            raise
+        self._opened = True
+
+    def close(self, *, success: bool) -> None:
+        if not self._opened or not self._auto_close:
+            return
         import mlflow
 
-        mlflow.end_run(status="FAILED" if exc_type is not None else "FINISHED")
-        self._started = False
-        return None
+        mlflow.end_run(status="FINISHED" if success else "FAILED")
+        self._opened = False
 
     def store_config(self, config: Mapping[str, Any]) -> None:
-        """Replace the stored config with the one training actually used.
-
-        Args:
-            config: resolved config after the scheduler has rewritten it.
-        """
         self.config = config
-        if not self._started:
+        if not self._opened:
             return
         import mlflow
 
         mlflow.log_dict(_plain_data(self.config), "config.yaml")
 
     def log(self, data: Mapping[str, Any], *, step: int | None = None) -> None:
-        """Write finite numeric values as MLflow metrics.
-
-        Args:
-            data: values to record.
-            step: optional step index for this payload.
-        """
         metrics = _finite_metrics(data)
         if not metrics:
             return
@@ -164,3 +131,41 @@ class MLflowCallback(ReportCallback):
             mlflow.log_metrics(metrics)
         else:
             mlflow.log_metrics(metrics, step=step)
+
+
+class MLflowCallback(ReportCallback):
+    """Deprecated: prefer :class:`MLflowReporter` with :class:`ReporterScope`."""
+
+    def __init__(
+        self,
+        *,
+        tracking_uri: str | None,
+        experiment: str,
+        run_name: str,
+        config: Mapping[str, Any],
+        run_id: str | None = None,
+        artifact_location: str | None = None,
+    ) -> None:
+        self._lifecycle_open = False
+        super().__init__(
+            MLflowReporter(
+                tracking_uri=tracking_uri,
+                experiment=experiment,
+                run_name=run_name,
+                config=config,
+                run_id=run_id,
+                artifact_location=artifact_location,
+            )
+        )
+
+    def __enter__(self) -> "MLflowCallback":
+        self._reporter.open()
+        self._lifecycle_open = True
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+        del exc, tb
+        if self._lifecycle_open:
+            self._reporter.close(success=exc_type is None)
+            self._lifecycle_open = False
+        return None
