@@ -17,14 +17,14 @@ sequenceDiagram
     Run ->> Run: logger + ReporterContext (main)
     Run ->> Task: run(ctx) on every rank, group alive
     alt run raised
-        Run ->> Run: teardown_process_group wait=False, re-raise
+        Run ->> Run: end_training, re-raise
     else ok
-        Run ->> Run: teardown_process_group, raise_deferred_error
+        Run ->> Run: wait_for_everyone, end_training, raise_deferred_error
         Run ->> Task: finish(run) on main, reporter still open
     end
 ```
 
-`run_experiment` returns the object that `task.run` returned on this rank. If the reporter fails to open on the main process, every rank stops before `task.run`. If `task.run` raises, the group is destroyed and `finish` is skipped. Even a single-process run constructs an `Accelerator`. Each main-process run writes its text log to `log.log_dir/<timestamp>_<pid>/log.txt`.
+`run_experiment` returns the object that `task.run` returned on this rank. If the reporter fails to open on the main process, every rank stops before `task.run`. If `task.run` raises, the group is destroyed without a barrier and `finish` is skipped. A barrier failure still destroys the group, then propagates. A failure to destroy the group is logged on every rank (through the `mlkit.util.experiment.runner` logger where there is no file logger) and does not fail the run. Even a single-process run constructs an `Accelerator`. Each main-process run writes its text log to `log.log_dir/<timestamp>_<pid>/log.txt`.
 
 ## Hydra config sections
 
@@ -70,6 +70,8 @@ def main(cfg: DictConfig):
 
 `TrainSpec.run` builds the model, data, optimizer, scheduler, and a `MyDistributedPipeline` (from `get_train_class()`), then calls `pipeline.train()`. Bundle `"callbacks"` go to the pipeline constructor, ahead of the reporter callback. They are registered before the checkpoint load, so they also see `POST_LOAD` on resume. The pipeline is seeded with `train.seed`. When the latest checkpoint carries a `report_run.json` for the configured backend, the tracked run resumes.
 
+Checkpoints go under `checkpoint_root(cfg, run_suffix)`, which `InferSpec` uses too. A `ConfigSnapshotCallback` writes the resolved config, including the scheduler rewrite, into every published checkpoint as `config.yaml`. Add one to any extra pipeline you train in a hook (`example/moon_rectified_flow/main.py` does) so its checkpoints are self-describing too.
+
 `TrainRun` holds `cfg`, `accelerator`, `logger`, `reporter`, `model_bundle`, the datasets, optimizer, scheduler, configs, `collate_fn`, and `pipeline`. Teardown hooks receive it after training, with `pipeline` reflecting post-train state (latest checkpoint path, halt flag, etc.).
 
 ## Inference: InferSpec
@@ -84,12 +86,15 @@ def main(cfg: DictConfig):
 
 `InferSpec.run` does the following on every rank:
 
-1. Resolve the checkpoint: `infer.checkpoint_dir` when set, otherwise the latest `checkpoint_*` under the training save directory. That directory is derived from `train.save_dir`, `model.name`, `dataset.name`, `optimizer.lr`, `train.batch_size`, and `run_suffix`, so pass the same overrides you trained with. No checkpoint raises `FileNotFoundError`.
-2. Build the bundle with `get_model` and disable its `train_hook_handlers`.
-3. Load `model.safetensors` strictly; a missing or unexpected key raises instead of silently keeping random weights.
-4. Move the model to `accelerator.device` in eval mode, load the datasets, and call `infer`.
+1. Resolve the checkpoint: `infer.checkpoint_dir` when set, otherwise the latest `checkpoint_*` under `checkpoint_root(cfg, run_suffix)`. That directory is derived from `train.save_dir`, `model.name`, `dataset.name`, `optimizer.lr`, `train.batch_size`, and `run_suffix`, so pass the same overrides you trained with. No checkpoint raises `FileNotFoundError`.
+2. Load the checkpoint's `config.yaml` into `run.train_cfg`. On the main process, log a warning that lists every value that differs from the current config, ignoring the runtime sections (`train`, `infer`, `optimizer`, `log`, `reporter`, `mlflow`, `wandb`). A sampling value you change on purpose shows up there too; a checkpoint without `config.yaml` logs that the check was skipped.
+3. Build the bundle with `get_model` and disable its `train_hook_handlers`.
+4. Load `model.safetensors` strictly; a missing or unexpected key raises instead of silently keeping random weights. Strict loading catches shape changes; the config warning catches values that keep the shapes.
+5. Move the model to `accelerator.device` in eval mode, load the datasets, and call `infer`.
 
-`InferRun` holds `cfg`, `accelerator`, `logger`, `reporter`, `model_bundle`, `checkpoint_dir`, `train_set`, `val_set`, `test_set` (each `None` without `get_dataset`), and `outputs`. Each inference opens a new tracked run named after the training run with an `-infer` suffix; it never resumes the training run.
+`infer` and `post_dist_teardown` both run under `accelerator.autocast()`, so `infer.mixed_precision` (for example `bf16`) applies to them. The framework does not add `torch.no_grad()`, because classifier guidance and Langevin sampling need gradients; wrap pure forward passes yourself.
+
+`InferRun` holds `cfg`, `accelerator`, `logger`, `reporter`, `model_bundle`, `checkpoint_dir`, `train_cfg`, `train_set`, `val_set`, `test_set` (each `None` without `get_dataset`), and `outputs`. Each inference opens a new tracked run named after the training run with an `-infer` suffix; it never resumes the training run.
 
 Every example config has an `infer` block:
 
@@ -122,8 +127,9 @@ uv run python infer.py infer.checkpoint_dir=/path/to/checkpoint_epoch0_step100_g
 
 `post_dist_teardown(run)` runs on **`accelerator.is_main_process` only**, after:
 
-1. `teardown_process_group(..., wait=True)` (barrier, then process group destroyed)
-2. `raise_deferred_error()` (surfaces rank-local failures deferred during the run)
+1. `accelerator.wait_for_everyone()`
+2. `accelerator.end_training()` (process group destroyed)
+3. `raise_deferred_error()` (surfaces rank-local failures deferred during the run)
 
 Use it for sampling, plotting, and other single-process work that should not hold the distributed group open. The reporter is still open, so `run.reporter.log(...)` reaches the tracked run (see `example/moon_vae/infer.py`).
 

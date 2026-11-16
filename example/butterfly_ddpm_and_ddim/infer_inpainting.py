@@ -35,7 +35,7 @@ def post_dist_teardown(run):
         mode=cfg.diffuser.mode,
         n_repaint_steps=cfg.diffuser.n_repaint_steps,
     )
-    image = (result / 2 + 0.5).clamp(0, 1).cpu().permute(0, 2, 3, 1).numpy()
+    image = (result / 2 + 0.5).clamp(0, 1).float().cpu().permute(0, 2, 3, 1).numpy()
     image_grid = make_image_grid(numpy_to_pil(image), rows=4, cols=4)
     image_grid.save(
         f"inpainted_sample_{cfg.optimizer.name}_{cfg.diffuser.mode}_{cfg.diffuser.name}_{cfg.diffuser.n_inference_steps}_{cfg.diffuser.n_repaint_steps}.png"

@@ -36,14 +36,21 @@ def _install(
     *,
     is_main: bool,
     num_processes: int = 1,
+    barrier_error: BaseException | None = None,
+    destroy_error: BaseException | None = None,
 ) -> list[dict[str, Any]]:
+    def record(event: str, error: BaseException | None) -> None:
+        events.append(event)
+        if error is not None:
+            raise error
+
     accelerator = MagicMock()
     accelerator.is_main_process = is_main
     accelerator.num_processes = num_processes
     accelerator.device = torch.device("cpu")
     accelerator.check_trigger.return_value = False
-    accelerator.wait_for_everyone.side_effect = lambda: events.append("wait")
-    accelerator.end_training.side_effect = lambda: events.append("end")
+    accelerator.wait_for_everyone.side_effect = lambda: record("wait", barrier_error)
+    accelerator.end_training.side_effect = lambda: record("end", destroy_error)
     built: list[dict[str, Any]] = []
 
     def build(*args: Any, **kwargs: Any) -> MagicMock:
@@ -126,3 +133,30 @@ def test_run_error_ends_the_group_without_finish(monkeypatch: pytest.MonkeyPatch
         run_experiment(_cfg(), _Job(events, error=RuntimeError("boom")))
 
     assert events == ["seed=7", "run", "end"]
+
+
+@pytest.mark.parametrize(("is_main", "num_processes"), [(True, 1), (False, 2)])
+def test_destroy_failure_after_success_is_logged_on_every_rank(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, is_main: bool, num_processes: int
+):
+    events: list[str] = []
+    _install(monkeypatch, events, is_main=is_main, num_processes=num_processes, destroy_error=RuntimeError("nccl gone"))
+
+    with caplog.at_level(logging.ERROR):
+        run = run_experiment(_cfg(), _Job(events))
+
+    assert run.value == 42
+    assert events[-1] == ("finish=42" if is_main else "end")
+    failures = [record for record in caplog.records if record.getMessage() == "Failed to destroy the process group"]
+    assert len(failures) == 1
+    assert failures[0].exc_info is not None
+
+
+def test_barrier_failure_still_destroys_the_group_and_skips_finish(monkeypatch: pytest.MonkeyPatch):
+    events: list[str] = []
+    _install(monkeypatch, events, is_main=True, barrier_error=TimeoutError("barrier"))
+
+    with pytest.raises(TimeoutError, match="barrier"):
+        run_experiment(_cfg(), _Job(events))
+
+    assert events == ["seed=7", "run", "wait", "end"]

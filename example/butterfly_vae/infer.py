@@ -18,7 +18,7 @@ def _tensor_to_pil_list(images):
     from diffusers.utils.pil_utils import numpy_to_pil
 
     images = (images / 2 + 0.5).clamp(0, 1)
-    images = images.cpu().permute(0, 2, 3, 1).numpy()
+    images = images.float().cpu().permute(0, 2, 3, 1).numpy()
     return numpy_to_pil(images)
 
 

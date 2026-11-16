@@ -6,6 +6,7 @@ section named by :attr:`Task.section` with ``seed`` and ``mixed_precision``.
 
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, ClassVar, Protocol, cast
@@ -13,8 +14,6 @@ from typing import TYPE_CHECKING, Any, ClassVar, Protocol, cast
 from omegaconf import DictConfig
 
 if TYPE_CHECKING:
-    import logging
-
     from accelerate import Accelerator
 
     from mlkit.util.report.base import Reporter
@@ -46,10 +45,10 @@ class Task[R: RunContext](ABC):
 
     ``cfg[section]`` supplies ``seed`` and ``mixed_precision``.
 
-    Hook timing (relative to :func:`teardown_process_group`):
+    Hook timing (relative to ``accelerator.end_training()``):
         ``run``: every rank, while the process group is alive.
-        ``finish``: global main only, after process group teardown, while the
-            reporter is still open.
+        ``finish``: global main only, after ``end_training``, while the reporter
+            is still open.
     """
 
     section: ClassVar[str]
@@ -77,39 +76,47 @@ class Task[R: RunContext](ABC):
         del run
 
 
-def teardown_process_group(
-    accelerator: Accelerator,
-    *,
-    logger: logging.Logger | None = None,
-    wait: bool = True,
-) -> None:
-    """Synchronize ranks (optional) and destroy the Accelerate process group.
-
-    Wraps ``accelerator.end_training()`` so training and inference teardown share
-    one call site if Accelerate renames or splits this API.
+def build_model_bundle(get_model: GetModelFn, cfg: DictConfig, *, disable_train_hooks: bool) -> dict[str, Any]:
+    """Call ``get_model`` and return a bundle dict with at least ``"model"``.
 
     Args:
-        accelerator: Accelerate instance for this run.
-        logger: file logger on the global main; used when teardown raises.
-        wait: when true, call ``wait_for_everyone`` before destroying the group.
+        get_model: returns a bare model or a bundle dict.
+        cfg: experiment config.
+        disable_train_hooks: disable every handler in ``"train_hook_handlers"``.
     """
-    if wait:
-        accelerator.wait_for_everyone()
+    model_bundle = get_model(cfg)
+    if not isinstance(model_bundle, dict):
+        model_bundle = {"model": model_bundle}
+    if disable_train_hooks:
+        for handler in model_bundle.get("train_hook_handlers", []):
+            handler.disable()
+    return model_bundle
+
+
+def _teardown_process_group(accelerator: Accelerator, logger: logging.Logger | None, *, wait: bool) -> None:
+    """Destroy the process group, after a barrier when ``wait`` is set.
+
+    A barrier failure propagates after the group is destroyed. A destroy failure is
+    logged, through this module's logger on ranks without a file logger.
+    """
     try:
-        accelerator.end_training()
-    except Exception:
-        if logger is not None:
-            logger.exception("Failed to destroy the process group")
+        if wait:
+            accelerator.wait_for_everyone()
+    finally:
+        try:
+            accelerator.end_training()
+        except Exception:
+            (logger or logging.getLogger(__name__)).exception("Failed to destroy the process group")
 
 
 def run_experiment[R: RunContext](cfg: DictConfig, task: Task[R]) -> R:
     """Run ``task`` inside one Accelerate process group with logging and tracking.
 
     The global main opens the log file and the reporter first; a failure there stops
-    every rank before ``task.run``. A failure inside ``task.run`` calls
-    :func:`teardown_process_group` without a barrier and skips ``task.finish``.
-    On success, :func:`teardown_process_group` runs with a barrier, a deferred
-    rank-local failure may be raised, and ``task.finish`` runs on the global main.
+    every rank before ``task.run``. A failure inside ``task.run`` destroys the group
+    without a barrier and skips ``task.finish``. Otherwise every rank waits, the group
+    is destroyed, a deferred rank-local failure is raised, and ``task.finish`` runs on
+    the global main. A failure to destroy the group is logged, not raised.
 
     Returns:
         The state returned by ``task.run`` on this rank.
@@ -165,7 +172,7 @@ def run_experiment[R: RunContext](cfg: DictConfig, task: Task[R]) -> R:
             except BaseException as exc:
                 local_open_error = exc
         if _reporter_open_failed(local_open_error):
-            teardown_process_group(accelerator, logger=logger, wait=False)
+            _teardown_process_group(accelerator, logger, wait=False)
             if local_open_error is not None:
                 raise local_open_error
             raise RuntimeError("Reporter failed to open on another rank")
@@ -173,9 +180,9 @@ def run_experiment[R: RunContext](cfg: DictConfig, task: Task[R]) -> R:
         try:
             run = task.run(ctx)
         except BaseException:
-            teardown_process_group(accelerator, logger=logger, wait=False)
+            _teardown_process_group(accelerator, logger, wait=False)
             raise
-        teardown_process_group(accelerator, logger=logger, wait=True)
+        _teardown_process_group(accelerator, logger, wait=True)
         raise_deferred_error()
         if accelerator.is_main_process:
             task.finish(run)

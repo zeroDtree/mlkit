@@ -28,7 +28,7 @@ def post_dist_teardown(run):
     image = result["x"]
     print(f"Generated tensor shape: {image.shape}")
     image = (image / 2 + 0.5).clamp(0, 1)
-    image = image.cpu().permute(0, 2, 3, 1).numpy()
+    image = image.float().cpu().permute(0, 2, 3, 1).numpy()
     image_grid = make_image_grid(numpy_to_pil(image), rows=4, cols=4)
     image_grid.save(
         f"generated_sample_{cfg.optimizer.name}_{cfg.diffuser.mode}_{cfg.diffuser.name}_{cfg.diffuser.n_inference_steps}.png"

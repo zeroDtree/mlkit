@@ -9,7 +9,7 @@ import hydra
 from omegaconf import DictConfig
 from utils import get_collate_fn, get_dataset, get_model
 
-from mlkit.util.experiment import TrainSpec, run_experiment
+from mlkit.util.experiment import ConfigSnapshotCallback, TrainSpec, run_experiment
 
 
 def pre_dist_teardown(run):
@@ -60,6 +60,7 @@ def pre_dist_teardown(run):
         log_config=log_config,
         logger=logger,
         collate_fn=cond_collate,
+        callbacks=[ConfigSnapshotCallback(cfg)],
     )
     if run.reporter is not None:
         cond_pipeline.add_callbacks([run.reporter.as_callback()])

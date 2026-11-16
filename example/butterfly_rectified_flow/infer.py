@@ -28,7 +28,7 @@ def post_dist_teardown(run):
     image = result["x"]
     print(f"Generated tensor shape: {image.shape}")
     image = (image / 2 + 0.5).clamp(0, 1)
-    image = image.cpu().permute(0, 2, 3, 1).numpy()
+    image = image.float().cpu().permute(0, 2, 3, 1).numpy()
     image_grid = make_image_grid(numpy_to_pil(image), rows=4, cols=4)
     save_dir = "fm_image"
     os.makedirs(save_dir, exist_ok=True)

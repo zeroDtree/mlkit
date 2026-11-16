@@ -43,8 +43,8 @@ def post_dist_teardown(run):
         )
 
     real = real_data.cpu().numpy()
-    generated = samples["x"].cpu().numpy()
-    reconstructed = recon["x_hat"].cpu().numpy()
+    generated = samples["x"].float().cpu().numpy()
+    reconstructed = recon["x_hat"].float().cpu().numpy()
 
     fig, axes = plt.subplots(1, 3, figsize=(12, 4), sharex=True, sharey=True)
     panels = [

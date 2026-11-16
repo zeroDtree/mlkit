@@ -197,7 +197,7 @@ flowchart TD
     Cleanup --> PostSave["POST_SAVE"]
 ```
 
-The published name is `checkpoint_epoch{epoch}_step{step}_global{global_step}`. Accelerate writes `model.safetensors` by default. The main process also writes `training_state.pth`, `training_config.pth`, `log_config.pth`, and, when a reporter is open, `report_run.json`. A failure deletes the temp directory, remembers the error, and sets halt on every rank. The published directory is left as it was. `POST_SAVE` runs after the rename. An empty `save_dir`, an existing directory, or an abort returns after `PRE_SAVE` only.
+The published name is `checkpoint_epoch{epoch}_step{step}_global{global_step}`. Accelerate writes `model.safetensors` by default. The main process also writes `training_state.pth`, `training_config.pth`, `log_config.pth`, `config.yaml` (the resolved Hydra config, under `TrainSpec`), and, when a reporter is open, `report_run.json`. A failure deletes the temp directory, remembers the error, and sets halt on every rank. The published directory is left as it was. `POST_SAVE` runs after the rename. An empty `save_dir`, an existing directory, or an abort returns after `PRE_SAVE` only.
 
 `save_total_limit` drops the oldest checkpoints by the `global` number in the name. A failure there is logged, and `POST_SAVE` still runs. The training loop calls this save at an interval and again when the loop returns, including after a halt. `BasePipeline.save` writes whole objects with `torch.save`. Examples use the distributed writer above.
 
@@ -208,7 +208,7 @@ A reporter failure on the main process is remembered and shared on a log interva
 !!! note "A halted epoch stays open"
     A halt inside the step loop leaves the epoch unfinished. `current_epoch` stays, and `current_step_in_epoch` stays on the next batch. Resume continues from those counters. The final save and `TRAINING_END` still run.
 
-After `pipeline.train()` returns inside `TrainSpec.run`, optional `pre_dist_teardown` runs on every rank while the process group is still alive (skipped when the pipeline halted). Then `run_experiment` calls `teardown_process_group(..., wait=True)`, raises any deferred error, and runs `post_dist_teardown` on the main process only. Details are in [Running an experiment — teardown](experiment.md#teardown-hooks).
+After `pipeline.train()` returns inside `TrainSpec.run`, optional `pre_dist_teardown` runs on every rank while the process group is still alive (skipped when the pipeline halted). Then `run_experiment` waits on all ranks, destroys the process group, raises any deferred error, and runs `post_dist_teardown` on the main process only. Details are in [Running an experiment — teardown](experiment.md#teardown-hooks).
 
 ## Callbacks
 

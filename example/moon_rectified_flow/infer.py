@@ -46,7 +46,7 @@ def post_dist_teardown(run):
     for handler in sampling_hook_handlers:
         handler.disable()
     result: dict = model.sampling(shape=(n_samples, 2), device=accelerator.device, return_all=True)
-    x_list = [x.detach().cpu() for x in result["x_list"]]
+    x_list = [x.detach().float().cpu() for x in result["x_list"]]
 
     fig, axes = plt.subplots(1, n_steps + 1, figsize=(30, 4), sharex=True, sharey=True)
     axes[0].scatter(x_list[0][:, 0], x_list[0][:, 1], s=10)
@@ -73,7 +73,7 @@ def post_dist_teardown(run):
         return_all=True,
         sampling_condition=c_eval,
     )
-    x_list_c = [x.detach().cpu() for x in result_c["x_list"]]
+    x_list_c = [x.detach().float().cpu() for x in result_c["x_list"]]
     colors = ["blue" if lbl == 0 else "orange" for lbl in c_eval.squeeze().tolist()]
 
     fig, axes = plt.subplots(1, n_steps + 1, figsize=(4 * (n_steps + 1), 4), sharex=True, sharey=True)
@@ -118,7 +118,7 @@ def post_dist_teardown(run):
         sharey=True,
     )
     for plot_count, idx in enumerate(cfm_plot_indices):
-        x_plot = x_list[idx].detach().cpu()
+        x_plot = x_list[idx].detach().float().cpu()
         axes[plot_count].scatter(x_plot[:, 0], x_plot[:, 1], s=10, c=colors_cfm)
         axes[plot_count].set_title(f"t = {cfm_time_steps[idx]:.2f}")
         axes[plot_count].set_xlim(-3.0, 3.0)

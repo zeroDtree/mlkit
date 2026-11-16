@@ -7,7 +7,8 @@ Run with:
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, cast
 from unittest.mock import MagicMock
@@ -16,7 +17,8 @@ import pytest
 import torch
 from omegaconf import DictConfig, OmegaConf
 
-from mlkit.util.experiment import InferRun, InferSpec, run_experiment
+from mlkit.pipeline.callback import CallbackEvent
+from mlkit.util.experiment import ConfigSnapshotCallback, InferRun, InferSpec, run_experiment
 from mlkit.util.experiment.runner import GetDatasetFn, GetModelFn
 
 
@@ -45,13 +47,15 @@ def _save_dir(tmp_path: Path, suffix: str = "") -> Path:
     return Path(f"{tmp_path / 'checkpoints' / 'toy' / 'toy' / '-lr:0.01-bs:2'}{suffix}")
 
 
-def _write_checkpoint(directory: Path, weight: float) -> Path:
+def _write_checkpoint(directory: Path, weight: float, train_cfg: DictConfig | None = None) -> Path:
     from safetensors.torch import save_model
 
     model = torch.nn.Linear(1, 1)
     torch.nn.init.constant_(model.weight, weight)
     directory.mkdir(parents=True)
     save_model(model, str(directory / "model.safetensors"))
+    if train_cfg is not None:
+        ConfigSnapshotCallback(train_cfg).on_event(CallbackEvent.PRE_FINALIZE_SAVE, checkpoint_dir=str(directory))
     return directory
 
 
@@ -91,6 +95,10 @@ def _spec(
         post_dist_teardown=post_dist_teardown,
         run_suffix=run_suffix,
     )
+
+
+def _messages(caplog: pytest.LogCaptureFixture) -> list[str]:
+    return [record.getMessage() for record in caplog.records if record.name == "mlkit.test.infer"]
 
 
 def _weight(run: InferRun) -> float:
@@ -173,6 +181,94 @@ def test_infer_runs_before_teardown_and_feeds_post(tmp_path: Path, monkeypatch: 
     run_experiment(_cfg(tmp_path), _spec(events, infer=infer))
 
     assert events == ["infer", "wait", "end", "post=1.0"]
+
+
+def test_both_hooks_run_under_autocast(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    events: list[str] = []
+    accelerator = _install(monkeypatch, events)
+    _write_checkpoint(_save_dir(tmp_path) / "checkpoint_epoch0_step1_global1", 1.0)
+
+    @contextmanager
+    def autocast() -> Iterator[None]:
+        events.append("autocast>")
+        yield
+        events.append("<autocast")
+
+    accelerator.autocast.side_effect = autocast
+
+    def infer(run: InferRun) -> int:
+        del run
+        events.append("infer")
+        return 1
+
+    run_experiment(_cfg(tmp_path), _spec(events, infer=infer))
+
+    assert events == ["autocast>", "infer", "<autocast", "wait", "end", "autocast>", "post=1", "<autocast"]
+
+
+def test_config_snapshot_is_resolved_when_the_checkpoint_is_saved(tmp_path: Path):
+    cfg = OmegaConf.create({"model": {"width": 4, "copy": "${model.width}"}})
+    callback = ConfigSnapshotCallback(cfg)
+
+    callback.on_event(CallbackEvent.POST_SAVE, checkpoint_dir=str(tmp_path))
+    assert not (tmp_path / "config.yaml").exists()
+
+    cfg.model.width = 8
+    callback.on_event(CallbackEvent.PRE_FINALIZE_SAVE, checkpoint_dir=str(tmp_path))
+    assert OmegaConf.load(tmp_path / "config.yaml") == {"model": {"width": 8, "copy": 8}}
+
+
+def test_model_side_config_drift_is_logged(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+):
+    events: list[str] = []
+    _install(monkeypatch, events)
+    train_cfg = _cfg(tmp_path)
+    train_cfg.model.width = 8
+    train_cfg.train.n_steps = 999
+    train_cfg.optimizer.lr = 0.5
+    train_cfg.sampling = {"steps": 3}
+    checkpoint = _write_checkpoint(tmp_path / "ckpt", 1.0, train_cfg)
+    cfg = _cfg(tmp_path, checkpoint_dir=str(checkpoint))
+    cfg.model.width = 16
+
+    with caplog.at_level(logging.WARNING, logger="mlkit.test.infer"):
+        run = run_experiment(cfg, _spec(events))
+
+    assert run.train_cfg is not None
+    assert run.train_cfg.model.width == 8
+    assert _messages(caplog) == [
+        "Inference config differs from the training config:\n"
+        "model.width: train=8, infer=16\n"
+        "sampling.steps: train=3, infer='<unset>'"
+    ]
+
+
+def test_matching_config_logs_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+):
+    events: list[str] = []
+    _install(monkeypatch, events)
+    _write_checkpoint(_save_dir(tmp_path) / "checkpoint_epoch0_step1_global1", 1.0, _cfg(tmp_path))
+
+    with caplog.at_level(logging.WARNING, logger="mlkit.test.infer"):
+        run_experiment(_cfg(tmp_path), _spec(events))
+
+    assert _messages(caplog) == []
+
+
+def test_checkpoint_without_snapshot_skips_the_check(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+):
+    events: list[str] = []
+    _install(monkeypatch, events)
+    _write_checkpoint(_save_dir(tmp_path) / "checkpoint_epoch0_step1_global1", 1.0)
+
+    with caplog.at_level(logging.WARNING, logger="mlkit.test.infer"):
+        run = run_experiment(_cfg(tmp_path), _spec(events))
+
+    assert run.train_cfg is None
+    assert _messages(caplog) == [f"{run.checkpoint_dir} has no config.yaml; the config check is skipped"]
 
 
 def test_datasets_come_from_get_dataset(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):

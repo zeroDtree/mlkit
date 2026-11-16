@@ -7,11 +7,57 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, ClassVar, Protocol, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Protocol, cast
 
 from omegaconf import DictConfig
 
-from .runner import GetDatasetFn, GetModelFn, RunContext, Task
+from mlkit.pipeline.callback import BaseCallback, CallbackEvent
+
+from .runner import GetDatasetFn, GetModelFn, RunContext, Task, build_model_bundle
+
+if TYPE_CHECKING:
+    from torch.optim import Optimizer
+    from torch.optim.lr_scheduler import LRScheduler
+
+    from mlkit.pipeline.distributed_pipeline import DistributedPipeline
+    from mlkit.pipeline.pipeline import LogConfig, TrainingConfig
+
+CONFIG_SNAPSHOT_NAME = "config.yaml"
+
+
+def checkpoint_root(cfg: DictConfig, suffix: str = "") -> str:
+    """Return the directory holding the ``checkpoint_*`` folders of the training run.
+
+    Args:
+        cfg: experiment config; ``train.save_dir``, model, dataset, ``optimizer.lr``,
+            and ``train.batch_size`` select the directory.
+        suffix: the training task's ``run_suffix``.
+    """
+    from mlkit.util.utils_for_main import get_new_save_dir
+
+    return get_new_save_dir(cfg.train.save_dir, cfg, suffix=suffix)
+
+
+class ConfigSnapshotCallback(BaseCallback):
+    """Write the resolved experiment config into each checkpoint before it is published.
+
+    The config is read at save time, so rewrites made before training (LR scheduler
+    length) are included.
+    """
+
+    def __init__(self, cfg: DictConfig) -> None:
+        self._cfg = cfg
+
+    def on_event(self, event: CallbackEvent, *_args: object, **kwargs: object) -> None:
+        import os
+
+        from omegaconf import OmegaConf
+
+        if event is not CallbackEvent.PRE_FINALIZE_SAVE:
+            return
+        directory = kwargs.get("checkpoint_dir")
+        if isinstance(directory, str):
+            OmegaConf.save(self._cfg, os.path.join(directory, CONFIG_SNAPSHOT_NAME), resolve=True)
 
 
 class GetCollateFn(Protocol):
@@ -34,12 +80,12 @@ class TrainRun(RunContext):
     train_set: Any
     val_set: Any
     test_set: Any
-    optimizer: Any
-    lr_scheduler: Any
-    log_config: Any
-    training_config: Any
-    collate_fn: Any
-    pipeline: Any
+    optimizer: Optimizer
+    lr_scheduler: LRScheduler
+    log_config: LogConfig
+    training_config: TrainingConfig
+    collate_fn: Callable[..., Any] | None
+    pipeline: DistributedPipeline
 
 
 @dataclass(kw_only=True)
@@ -49,13 +95,13 @@ class TrainSpec(Task[TrainRun]):
     ``get_model`` may return a bare model or a bundle dict with ``"model"`` plus
     optional ``"callbacks"`` (passed to the pipeline constructor, so they see
     ``POST_LOAD``) and ``"train_hook_handlers"``. ``run_suffix`` is appended to
-    both the run name and the checkpoint directory.
+    both the run name and the checkpoint directory. Every published checkpoint
+    also holds the resolved config as :data:`CONFIG_SNAPSHOT_NAME`.
 
-    Hook timing (relative to :func:`teardown_process_group`):
+    Hook timing (relative to ``accelerator.end_training()``):
         ``pre_dist_teardown``: every rank, after ``pipeline.train()`` while the
             process group is still alive (optional second training, shared reporter).
-        ``post_dist_teardown``: global main only, after process group teardown.
-            Invoked from :meth:`Task.finish`.
+        ``post_dist_teardown``: global main only, after ``end_training``.
     """
 
     section: ClassVar[str] = "train"
@@ -77,15 +123,13 @@ class TrainSpec(Task[TrainRun]):
     def resume_run_id(self, cfg: DictConfig, backend: str) -> str | None:
         from mlkit.pipeline.pipeline import latest_checkpoint_dir
         from mlkit.util.report import resume_run_id
-        from mlkit.util.utils_for_main import get_new_save_dir
 
-        save_dir = get_new_save_dir(cfg.train.save_dir, cfg, suffix=self.run_suffix)
-        return resume_run_id(latest_checkpoint_dir(save_dir), backend)
+        return resume_run_id(latest_checkpoint_dir(checkpoint_root(cfg, self.run_suffix)), backend)
 
     def run(self, ctx: RunContext) -> TrainRun:
         run = self._materialize(ctx)
         run.pipeline.train()
-        if self.pre_dist_teardown is not None and not run.pipeline._halt:
+        if self.pre_dist_teardown is not None and not run.pipeline.halted:
             self.pre_dist_teardown(run)
         return run
 
@@ -104,20 +148,13 @@ class TrainSpec(Task[TrainRun]):
         from mlkit.util.show import show_info
         from mlkit.util.utils_for_main import (
             get_learing_rate_scheduler,
-            get_new_save_dir,
             get_optimizer,
             get_train_class,
         )
 
         cfg = ctx.cfg
-        model_bundle = self.get_model(cfg)
-        if not isinstance(model_bundle, dict):
-            model_bundle = {"model": model_bundle}
+        model_bundle = build_model_bundle(self.get_model, cfg, disable_train_hooks=self.disable_train_hooks)
         model = model_bundle["model"]
-
-        if self.disable_train_hooks:
-            for handler in model_bundle.get("train_hook_handlers", []):
-                handler.disable()
 
         train_set, val_set, test_set = self.get_dataset(cfg)
         optimizer = (self.get_optimizer or get_optimizer)(model, cfg)
@@ -133,12 +170,12 @@ class TrainSpec(Task[TrainRun]):
         log_config = LogConfig(**cfg.log)
         PipelineClass, TrainingConfigClass = get_train_class()
         training_config = TrainingConfigClass(**cfg.train)
-        training_config.save_dir = get_new_save_dir(training_config.save_dir, cfg, suffix=self.run_suffix)
+        training_config.save_dir = checkpoint_root(cfg, self.run_suffix)
 
         print(training_config.__dict__)
 
         collate_fn = self.get_collate(cfg)
-        callbacks = list(model_bundle.get("callbacks", []))
+        callbacks = [*model_bundle.get("callbacks", []), ConfigSnapshotCallback(cfg)]
         if ctx.reporter is not None:
             callbacks.append(ctx.reporter.as_callback())
         pipeline = PipelineClass(

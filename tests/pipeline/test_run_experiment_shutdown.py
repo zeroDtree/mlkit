@@ -16,7 +16,7 @@ import pytest
 import torch
 from omegaconf import DictConfig, OmegaConf
 
-from mlkit.util.experiment import TrainSpec, run_experiment
+from mlkit.util.experiment import ConfigSnapshotCallback, TrainSpec, run_experiment
 from mlkit.util.failure import defer_error, has_deferred_error
 
 
@@ -90,7 +90,7 @@ def _install(
         def __init__(self, **kwargs: Any) -> None:
             if pipelines is not None:
                 pipelines.append(kwargs)
-            self._halt = False
+            self.halted = False
 
         def train(self) -> None:
             events.append("train")
@@ -100,7 +100,7 @@ def _install(
                 raise train_error
             # The real pipeline sets this after sharing a deferred failure.
             if halt or has_deferred_error():
-                self._halt = True
+                self.halted = True
 
     class TrainingConfig:
         def __init__(self, **kwargs: Any) -> None:
@@ -186,7 +186,9 @@ def test_bundle_callbacks_and_seed_reach_the_pipeline_constructor(monkeypatch: p
 
     _run(events, bundle={"callbacks": [bundle_callback]})
 
-    assert pipelines[0]["callbacks"] == [bundle_callback, reporter_callback]
+    bundle_cb, snapshot_cb, last_cb = pipelines[0]["callbacks"]
+    assert (bundle_cb, last_cb) == (bundle_callback, reporter_callback)
+    assert isinstance(snapshot_cb, ConfigSnapshotCallback)
     assert pipelines[0]["seed"] == 0
 
 

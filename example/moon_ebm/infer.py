@@ -28,7 +28,7 @@ def post_dist_teardown(run):
         device=accelerator.device,
         return_all=True,
     )
-    generated = result["x"].cpu().numpy()
+    generated = result["x"].float().cpu().numpy()
     x_list = result["x_list"]
 
     def select_uniform_indices(total: int, k: int) -> list[int]:

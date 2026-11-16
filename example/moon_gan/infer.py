@@ -29,7 +29,7 @@ def post_dist_teardown(run):
         shape=(n_samples, 2),
         device=accelerator.device,
     )
-    generated = result["x"].cpu().numpy()
+    generated = result["x"].float().cpu().numpy()
 
     fig, axes = plt.subplots(1, 2, figsize=(8, 4), sharex=True, sharey=True)
     for ax, data, title in zip(

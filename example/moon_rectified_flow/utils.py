@@ -18,9 +18,9 @@ from shared.model import (
     train_moons_classifier,
 )
 
+from mlkit.util.experiment import checkpoint_root
 from mlkit.util.utils_for_main import (
     get_learing_rate_scheduler,  # noqa: F401
-    get_new_save_dir,
     get_optimizer,  # noqa: F401
     get_run_name,  # noqa: F401
     get_train_class,  # noqa: F401
@@ -63,7 +63,7 @@ def get_conditional_collate_fn(cfg: DictConfig):
 
 
 def get_conditional_save_dir(cfg: DictConfig) -> str:
-    return get_new_save_dir(cfg.train.save_dir, cfg, suffix="_cfm")
+    return checkpoint_root(cfg, suffix="_cfm")
 
 
 def get_conditional_model(cfg: DictConfig):

@@ -328,6 +328,11 @@ class BasePipeline(metaclass=ABCMeta):
         if self._halt_if_any_rank_failed():
             self._halt = True
 
+    @property
+    def halted(self) -> bool:
+        """Whether a shared or local failure stopped training on this rank."""
+        return self._halt
+
     def _is_global_main_process(self) -> bool:
         """Return whether this process records metrics.
 

@@ -31,7 +31,7 @@ def post_dist_teardown(run):
     for handler in sampling_hook_handlers:
         handler.disable()
     result: dict = model.sampling(shape=(n_samples, 2), device=accelerator.device, return_all=True)
-    x_list = [x.detach().cpu() for x in result["x_list"]]
+    x_list = [x.detach().float().cpu() for x in result["x_list"]]
     x_list_sel = [x_list[i] for i in frame_indices]
 
     fig, axes = plt.subplots(1, n_frames + 1, figsize=(4 * (n_frames + 1), 4), sharex=True, sharey=True)
@@ -54,7 +54,7 @@ def post_dist_teardown(run):
         return_all=True,
         sampling_condition=c_eval,
     )
-    x_list_c = [x.detach().cpu() for x in result_c["x_list"]]
+    x_list_c = [x.detach().float().cpu() for x in result_c["x_list"]]
     x_list_c_sel = [x_list_c[i] for i in frame_indices]
     colors = ["blue" if lbl == 0 else "orange" for lbl in c_eval.squeeze().tolist()]
 
