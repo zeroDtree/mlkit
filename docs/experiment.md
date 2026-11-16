@@ -72,7 +72,7 @@ def main(cfg: DictConfig):
 
 Checkpoints go under `checkpoint_root(cfg, run_suffix)`, which `InferSpec` uses too. When `train.save_dir` is empty or null, `checkpoint_root` returns `""`, the pipeline does not save, and inference must set `infer.checkpoint_dir`. A `ConfigSnapshotCallback` writes the resolved config, including the scheduler rewrite, into every published checkpoint as `config.yaml`. Add one to any extra pipeline you train in a hook (`example/moon_rectified_flow/main.py` does) so its checkpoints are self-describing too.
 
-`TrainRun` holds `cfg`, `accelerator`, `logger`, `reporter`, `model_bundle`, the datasets, optimizer, scheduler, configs, `collate_fn`, and `pipeline`. Hooks receive it after training, with `pipeline` reflecting post-train state (latest checkpoint path, halt flag, etc.).
+`TrainRun` holds `cfg`, `accelerator`, `logger`, `reporter`, `model_bundle`, the datasets, optimizer, scheduler, configs, `collate_fn`, and `pipeline`. For training, `run.accelerator` is `run.pipeline.accelerator`—the instance that `prepare`d the model, optimizer, dataloader, and scheduler. Use it for `save_state`, `unwrap_model`, `clip_grad_norm_`, and training collectives. `run_experiment` keeps a separate session `Accelerator` only for opening the reporter, cross-rank sync before `task.run`, and process-group teardown. Hooks receive `TrainRun` after training, with `pipeline` reflecting post-train state (latest checkpoint path, halt flag, etc.).
 
 ## Inference: InferSpec
 
@@ -124,6 +124,8 @@ uv run python infer.py infer.checkpoint_dir=/path/to/checkpoint_epoch0_step100_g
 ## Hooks
 
 `after_train(run)` (`TrainSpec` only) and `infer(run)` (`InferSpec` only) run on **every rank** inside `Task.run`, while the process group is still alive. `after_train` runs after `pipeline.train()` returns and is skipped when `pipeline.halted`. Use these for work that must stay distributed (a second training phase, sharded inference, collective metrics) while the same reporter remains open.
+
+A second training phase should construct its own pipeline (and thus its own training `Accelerator`), as in `example/moon_rectified_flow/main.py`. Mixed precision and gradient accumulation are process-wide in Accelerate; changing `mixed_precision` on a later `Accelerator()` raises, and the last constructed `Accelerator` wins for gradient accumulation. Query device, rank, or process count with `PartialState()` instead of calling `Accelerator()` when you only need placement metadata. After dropping the first pipeline, call `run.accelerator.free_memory()` so prepared wrappers are not held through the next phase.
 
 `on_finish(run)` runs on **`accelerator.is_main_process` only**, inside `Task.finish`, after:
 

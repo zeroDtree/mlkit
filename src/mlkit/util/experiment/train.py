@@ -78,6 +78,11 @@ class GetOptimizerFn(Protocol):
 class TrainRun(RunContext):
     """Training state built before ``pipeline.train()``.
 
+    ``accelerator`` is ``pipeline.accelerator``: the instance that called ``prepare``
+    on the model, optimizer, dataloader, and scheduler (use it for ``save_state``,
+    ``unwrap_model``, ``clip_grad_norm_``, and training collectives). ``run_experiment``
+    owns a separate session ``Accelerator`` for process-group lifecycle only.
+
     Teardown hooks receive the same instance after training; ``pipeline`` reflects
     post-train state.
     """
@@ -198,7 +203,7 @@ class TrainSpec(Task[TrainRun]):
         )
         return TrainRun(
             cfg=cfg,
-            accelerator=ctx.accelerator,
+            accelerator=pipeline.accelerator,
             logger=ctx.logger,
             reporter=ctx.reporter,
             model_bundle=model_bundle,

@@ -91,6 +91,11 @@ def _install(
             if pipelines is not None:
                 pipelines.append(kwargs)
             self.halted = False
+            self.accelerator = MagicMock()
+            self.accelerator.is_local_main_process = is_main
+            self.accelerator.is_main_process = is_main
+            self.accelerator.device = torch.device("cpu")
+            self.accelerator.num_processes = num_processes
 
         def train(self) -> None:
             events.append("train")
@@ -254,15 +259,19 @@ def test_every_rank_uses_the_same_checkpoint_dir(monkeypatch: pytest.MonkeyPatch
 
 def test_main_process_destroys_group_before_post_train(monkeypatch: pytest.MonkeyPatch):
     events: list[str] = []
-    accelerator = _install(monkeypatch, events, is_main=True)
+    session_accelerator = _install(monkeypatch, events, is_main=True)
 
     def on_finish(ctx) -> None:
+        pipeline_accelerator = ctx.pipeline.accelerator
         del ctx.cfg, ctx.model_bundle, ctx.pipeline, ctx.train_set
-        assert ctx.accelerator is accelerator
+        assert ctx.accelerator is pipeline_accelerator
+        assert ctx.accelerator is not session_accelerator
         events.append("post")
 
     _run(events, on_finish=on_finish)
     assert events == ["train", "wait", "end", "post"]
+    session_accelerator.wait_for_everyone.assert_called()
+    session_accelerator.end_training.assert_called()
 
 
 def test_non_main_process_destroys_group_without_post_train(monkeypatch: pytest.MonkeyPatch):
@@ -454,6 +463,26 @@ def test_scheduler_rewrite_replaces_the_stored_config(monkeypatch: pytest.Monkey
 
     assert opened[0]["train"]["n_steps"] == 1
     assert stored[-1]["train"]["n_steps"] == 99
+
+
+def test_train_run_accelerator_is_pipeline_accelerator(monkeypatch: pytest.MonkeyPatch):
+    events: list[str] = []
+    session_accelerator = _install(monkeypatch, events, is_main=True)
+    seen: dict[str, Any] = {}
+
+    def after_train(run) -> None:
+        seen["run_acc"] = run.accelerator
+        seen["pipe_acc"] = run.pipeline.accelerator
+        seen["session_acc"] = session_accelerator
+
+    def on_finish(ctx) -> None:
+        del ctx
+
+    _run(events, on_finish=on_finish, after_train=after_train)
+    assert seen["run_acc"] is seen["pipe_acc"]
+    assert seen["run_acc"] is not seen["session_acc"]
+    session_accelerator.wait_for_everyone.assert_called()
+    session_accelerator.end_training.assert_called()
 
 
 def test_after_train_runs_on_main_before_teardown(monkeypatch: pytest.MonkeyPatch):

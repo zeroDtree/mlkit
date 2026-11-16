@@ -17,6 +17,7 @@ def after_train(run):
     cfg = run.cfg
     accelerator = run.accelerator
     del run.model_bundle, run.pipeline, run.train_set
+    accelerator.free_memory()
     from typing import Any, cast
 
     from omegaconf import OmegaConf

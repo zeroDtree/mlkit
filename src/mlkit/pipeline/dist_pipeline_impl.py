@@ -3,7 +3,7 @@ from typing import Any, Callable, List, Literal, Optional, cast
 
 import datasets
 import torch
-from accelerate import Accelerator, skip_first_batches
+from accelerate import PartialState, skip_first_batches
 from overrides import override
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
@@ -114,7 +114,7 @@ class MyTrainingConfig(DistributedTrainingConfig):
         Returns:
             int: the gradient accumulation steps
         """
-        n_processes = Accelerator().num_processes
+        n_processes = PartialState().num_processes
         assert real_batch_size % n_processes == 0, "real_batch_size must be divisible by n_processes"
         per_device_real_batch_size = real_batch_size // n_processes
         assert per_device_real_batch_size % per_device_batch_size == 0, (

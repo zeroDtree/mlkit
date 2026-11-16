@@ -266,10 +266,10 @@ def build_classifier_conditioner(
 
 
 def get_device_from_accelerator() -> torch.device:
-    """Return the current Accelerator device without keeping the object alive."""
-    from transformers.trainer import Accelerator
+    """Return the current process device from Accelerate without constructing ``Accelerator``."""
+    from accelerate import PartialState
 
-    return Accelerator().device
+    return PartialState().device
 
 
 _SuffixCallable = Callable[[], str]
