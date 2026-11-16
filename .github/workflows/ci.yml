@@ -9,6 +9,9 @@ on:
 permissions:
   contents: read
 
+env:
+  UV_DEFAULT_INDEX: https://pypi.org/simple
+
 jobs:
   quality:
     runs-on: ubuntu-latest

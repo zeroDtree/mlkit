@@ -13,6 +13,9 @@ concurrency:
   group: "pages"
   cancel-in-progress: false
 
+env:
+  UV_DEFAULT_INDEX: https://pypi.org/simple
+
 jobs:
   build:
     runs-on: ubuntu-latest
