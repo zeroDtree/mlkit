@@ -51,6 +51,11 @@ log:
   log_epochs: 1
   log_strategy: steps
 
+infer:
+  seed: 0
+  mixed_precision: null
+  checkpoint_dir: null
+
 reporter: mlflow
 
 mlflow:
@@ -69,7 +74,7 @@ diffusion:
   name: VPSDE
   n_discretization_steps: 1000
   n_inference_steps: 100
-  # sweep: uv run python main.py --multirun diffusion.n_correct_steps=0,1,2,3,4,5
+  # sweep: uv run python infer.py --multirun diffusion.n_correct_steps=0,1,2,3,4,5
   n_correct_steps: 0
   snr: 0.1
 

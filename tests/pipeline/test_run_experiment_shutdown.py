@@ -16,7 +16,7 @@ import pytest
 import torch
 from omegaconf import DictConfig, OmegaConf
 
-from mlkit.util.experiment import ExperimentSpec, run_experiment
+from mlkit.util.experiment import TrainSpec, run_experiment
 from mlkit.util.failure import defer_error, has_deferred_error
 
 
@@ -140,7 +140,7 @@ def _run(
         del cfg
         return None
 
-    spec = ExperimentSpec(
+    spec = TrainSpec(
         get_model=get_model,
         get_dataset=get_dataset,
         get_collate=get_collate,

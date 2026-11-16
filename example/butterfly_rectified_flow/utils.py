@@ -3,7 +3,6 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from typing import cast
 
 import torch
 from omegaconf import DictConfig
@@ -16,7 +15,6 @@ from mlkit.util.utils_for_main import (
     get_optimizer,  # noqa: F401
     get_run_name,  # noqa: F401
     get_train_class,  # noqa: F401
-    load_checkpoint,  # noqa: F401
 )
 
 
@@ -24,7 +22,7 @@ def get_dataset(cfg: DictConfig):
     return get_hf_image_dataset(cfg)
 
 
-def get_model(cfg: DictConfig, model=None, final_model_ckpt_path=None):
+def get_model(cfg: DictConfig, model=None):
     from mlkit.flow_matching.rectified_flow import RectifiedFlow, RectifiedFlowConfig
     from mlkit.flow_matching.time_scheduler import FlowMatchingTimeScheduler
     from mlkit.model.model_for_pipeline import ModelForPipeline
@@ -53,9 +51,6 @@ def get_model(cfg: DictConfig, model=None, final_model_ckpt_path=None):
     )
 
     pipeline_model = ModelForPipeline(model=flow)
-
-    if final_model_ckpt_path is not None and final_model_ckpt_path != "":
-        pipeline_model = cast(ModelForPipeline, load_checkpoint(pipeline_model, final_model_ckpt_path))
 
     return {"model": pipeline_model}
 

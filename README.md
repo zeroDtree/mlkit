@@ -59,16 +59,19 @@ cd example/butterfly_edm
 uv run python main.py                       # default config
 uv run python main.py train.lr=1e-3         # override a single value
 uv run python main.py --multirun gm.n_discretization_steps=100,200  # sweep
+uv run python infer.py                      # sample from the latest checkpoint
+uv run python infer.py train.lr=1e-3        # same overrides as the training run
 ```
 
 From the repo root, the same script writes to `<repo>/artifacts/` instead:
 
 ```bash
 uv run python example/butterfly_edm/main.py
+uv run python example/butterfly_edm/infer.py
 bash scripts/mc-run-python.sh example/butterfly_edm/main.py
 ```
 
-Config defaults live in the `config.yaml` (or `config_<variant>.yaml`) next to each script.
+Config defaults live in the `config.yaml` (or `config_<variant>.yaml`) next to each script. Each training script `main*.py` has an inference script `infer*.py` that shares its config and loads its latest checkpoint; set `infer.checkpoint_dir` to pick another one.
 
 
 ## Development

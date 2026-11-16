@@ -50,6 +50,11 @@ log:
   log_epochs: 999999
   log_strategy: null
 
+infer:
+  seed: 0
+  mixed_precision: null
+  checkpoint_dir: null
+
 reporter: mlflow
 
 mlflow:

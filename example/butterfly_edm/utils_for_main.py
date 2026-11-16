@@ -18,7 +18,6 @@ from mlkit.util.utils_for_main import (
     get_optimizer,  # noqa: F401
     get_run_name,  # noqa: F401
     get_train_class,  # noqa: F401
-    load_checkpoint,  # noqa: F401
 )
 
 
@@ -26,7 +25,7 @@ def get_dataset(cfg: DictConfig):
     return get_hf_image_dataset(cfg)
 
 
-def get_model(cfg: DictConfig, model=None, final_model_ckpt_path=None):
+def get_model(cfg: DictConfig, model=None):
     from mlkit.diffusion.euclidean_edm_diffuser import (
         EuclideanEDMConfig,
         EuclideanEDMDiffuser,
@@ -79,9 +78,6 @@ def get_model(cfg: DictConfig, model=None, final_model_ckpt_path=None):
     )
 
     pipeline_model = ModelForPipeline(model=gm)
-
-    if final_model_ckpt_path is not None and final_model_ckpt_path != "":
-        pipeline_model = load_checkpoint(pipeline_model, final_model_ckpt_path)
 
     return {"model": pipeline_model}
 

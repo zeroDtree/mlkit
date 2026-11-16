@@ -1,19 +1,119 @@
-"""Generic Hydra/OmegaConf training entry for examples.
+"""Task-agnostic Hydra/OmegaConf entry shared by training, inference, and custom tasks.
 
-Expects ``cfg`` sections such as ``train``, ``log``, ``reporter``, ``mlflow``, and ``wandb``.
+Expects ``cfg`` sections ``log``, ``reporter``, ``mlflow``, and ``wandb``, plus the
+section named by :attr:`Task.section` with ``seed`` and ``mixed_precision``.
 """
 
 from __future__ import annotations
 
-from typing import Any, cast
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, ClassVar, Protocol, cast
 
 from omegaconf import DictConfig
 
-from .types import ExperimentSpec, MaterializedRun
+if TYPE_CHECKING:
+    import logging
+
+    from accelerate import Accelerator
+
+    from mlkit.util.report.base import Reporter
 
 
-def run_experiment(cfg: DictConfig, spec: ExperimentSpec) -> None:
-    """Run a complete train cycle with optional pre/post distributed teardown hooks."""
+class GetModelFn(Protocol):
+    def __call__(self, cfg: DictConfig) -> Any: ...
+
+
+class GetDatasetFn(Protocol):
+    def __call__(self, cfg: DictConfig) -> tuple[Any, Any, Any]: ...
+
+
+@dataclass(kw_only=True)
+class RunContext:
+    """Process state that :func:`run_experiment` hands to a :class:`Task`.
+
+    ``logger`` and ``reporter`` are ``None`` off the global main process.
+    """
+
+    cfg: DictConfig
+    accelerator: Accelerator
+    logger: logging.Logger | None
+    reporter: Reporter | None
+
+
+class Task[R: RunContext](ABC):
+    """One job that :func:`run_experiment` runs inside a single process group.
+
+    ``cfg[section]`` supplies ``seed`` and ``mixed_precision``.
+
+    Hook timing (relative to :func:`teardown_process_group`):
+        ``run``: every rank, while the process group is alive.
+        ``finish``: global main only, after process group teardown, while the
+            reporter is still open.
+    """
+
+    section: ClassVar[str]
+
+    @abstractmethod
+    def run_name(self, cfg: DictConfig) -> str:
+        """Return the tracked run name. Called on the global main only."""
+
+    def resume_run_id(self, cfg: DictConfig, backend: str) -> str | None:
+        """Return the tracked run to continue, or ``None`` for a new run.
+
+        Args:
+            cfg: experiment config.
+            backend: reporter that is about to be opened.
+        """
+        del cfg, backend
+        return None
+
+    @abstractmethod
+    def run(self, ctx: RunContext) -> R:
+        """Do the work on every rank and return the state handed to :meth:`finish`."""
+
+    def finish(self, run: R) -> None:
+        """Do single-process work on the global main after the process group is gone."""
+        del run
+
+
+def teardown_process_group(
+    accelerator: Accelerator,
+    *,
+    logger: logging.Logger | None = None,
+    wait: bool = True,
+) -> None:
+    """Synchronize ranks (optional) and destroy the Accelerate process group.
+
+    Wraps ``accelerator.end_training()`` so training and inference teardown share
+    one call site if Accelerate renames or splits this API.
+
+    Args:
+        accelerator: Accelerate instance for this run.
+        logger: file logger on the global main; used when teardown raises.
+        wait: when true, call ``wait_for_everyone`` before destroying the group.
+    """
+    if wait:
+        accelerator.wait_for_everyone()
+    try:
+        accelerator.end_training()
+    except Exception:
+        if logger is not None:
+            logger.exception("Failed to destroy the process group")
+
+
+def run_experiment[R: RunContext](cfg: DictConfig, task: Task[R]) -> R:
+    """Run ``task`` inside one Accelerate process group with logging and tracking.
+
+    The global main opens the log file and the reporter first; a failure there stops
+    every rank before ``task.run``. A failure inside ``task.run`` calls
+    :func:`teardown_process_group` without a barrier and skips ``task.finish``.
+    On success, :func:`teardown_process_group` runs with a barrier, a deferred
+    rank-local failure may be raised, and ``task.finish`` runs on the global main.
+
+    Returns:
+        The state returned by ``task.run`` on this rank.
+    """
 
     import os
     from contextlib import ExitStack
@@ -21,113 +121,19 @@ def run_experiment(cfg: DictConfig, spec: ExperimentSpec) -> None:
     from accelerate import Accelerator
     from omegaconf import OmegaConf
 
-    from mlkit.pipeline.pipeline import LogConfig, latest_checkpoint_dir
     from mlkit.util.failure import clear_deferred_error, raise_deferred_error
     from mlkit.util.log import get_and_create_new_log_dir, get_logger
-    from mlkit.util.report import ReporterContext, resume_run_id
+    from mlkit.util.report import ReporterContext
     from mlkit.util.seed import seed_everything
-    from mlkit.util.show import show_info
-    from mlkit.util.utils_for_main import (
-        get_learing_rate_scheduler,
-        get_new_save_dir,
-        get_optimizer,
-        get_run_name,
-        get_train_class,
-    )
 
-    seed_everything(cfg.train.seed)
+    settings = cfg[task.section]
+    seed_everything(settings.seed)
 
-    accelerator = Accelerator(mixed_precision=cfg.train.mixed_precision)
+    accelerator = Accelerator(mixed_precision=settings.mixed_precision)
     print(f"accelerator.device = {accelerator.device}")
 
-    logger = None
-    run_name = ""
-    reporter = None
-
-    def _materialize() -> MaterializedRun:
-        """Resolve spec/cfg into a :class:`MaterializedRun` (no ``pipeline.train()``).
-
-        May rewrite ``cfg`` for the LR scheduler before ``store_config``.
-        """
-        model_bundle = spec.get_model(cfg)
-        if not isinstance(model_bundle, dict):
-            model_bundle = {"model": model_bundle}
-        model = model_bundle["model"]
-
-        if spec.disable_train_hooks:
-            for handler in model_bundle.get("train_hook_handlers", []):
-                handler.disable()
-
-        train_set, val_set, test_set = spec.get_dataset(cfg)
-        optimizer = (spec.get_optimizer or get_optimizer)(model, cfg)
-        lr_scheduler = get_learing_rate_scheduler(optimizer, accelerator, train_set, cfg)
-        if accelerator.is_main_process:
-            effective_config = cast(dict[str, Any], OmegaConf.to_container(cfg, resolve=True))
-            if reporter is not None:
-                reporter.store_config(effective_config)
-            if logger is not None:
-                logger.info("Config after scheduler rewrite:\n" + OmegaConf.to_yaml(cfg))
-        show_info(model=model, optimizer=optimizer)
-
-        log_config = LogConfig(**cfg.log)
-        PipelineClass, TrainingConfigClass = get_train_class()
-        training_config = TrainingConfigClass(**cfg.train)
-        training_config.save_dir = get_new_save_dir(training_config.save_dir, cfg, suffix=spec.run_suffix)
-
-        print(training_config.__dict__)
-
-        collate_fn = spec.get_collate(cfg)
-        callbacks = list(model_bundle.get("callbacks", []))
-        if reporter is not None:
-            callbacks.append(reporter.as_callback())
-        pipeline = PipelineClass(
-            model=model,
-            train_dataset=train_set,
-            eval_dataset=val_set,
-            optimizers=(optimizer, lr_scheduler),
-            training_config=training_config,
-            log_config=log_config,
-            collate_fn=collate_fn,
-            logger=logger,
-            seed=cfg.train.seed,
-            callbacks=callbacks,
-        )
-        return MaterializedRun(
-            cfg=cfg,
-            accelerator=accelerator,
-            reporter=reporter,
-            model_bundle=model_bundle,
-            train_set=train_set,
-            val_set=val_set,
-            test_set=test_set,
-            optimizer=optimizer,
-            lr_scheduler=lr_scheduler,
-            log_config=log_config,
-            training_config=training_config,
-            collate_fn=collate_fn,
-            pipeline=pipeline,
-        )
-
-    def _run_train() -> MaterializedRun:
-        run = _materialize()
-        run.pipeline.train()
-        if spec.pre_dist_teardown is not None and not run.pipeline._halt:
-            spec.pre_dist_teardown(run)
-        return run
-
-    def _destroy_group() -> None:
-        try:
-            accelerator.end_training()
-        except Exception:
-            if logger is not None:
-                logger.exception("Failed to destroy the process group")
-
-    def _finish(run: MaterializedRun) -> None:
-        accelerator.wait_for_everyone()
-        accelerator.end_training()
-        raise_deferred_error()
-        if accelerator.is_main_process and spec.post_dist_teardown is not None:
-            spec.post_dist_teardown(run)
+    logger: logging.Logger | None = None
+    reporter: Reporter | None = None
 
     def _reporter_open_failed(local_open_error: BaseException | None) -> bool:
         if accelerator.num_processes == 1:
@@ -144,33 +150,33 @@ def run_experiment(cfg: DictConfig, spec: ExperimentSpec) -> None:
                 log_dir = get_and_create_new_log_dir(cfg.log.log_dir, suffix=str(os.getpid()))
                 logger = get_logger(name="experiment", log_dir=log_dir)
                 logger.info(f"accelerator.device = {accelerator.device}")
-                logger.info(f"seed = {cfg.train.seed}")
-                run_name = get_run_name(cfg, suffix=spec.run_suffix)
+                logger.info(f"seed = {settings.seed}")
                 logger.info("Config:\n" + OmegaConf.to_yaml(cfg))
-                resolved_config = cast(dict[str, Any], OmegaConf.to_container(cfg, resolve=True))
                 reporter_kind = str(cfg.reporter).strip().lower()
-                checkpoint_dir = latest_checkpoint_dir(
-                    get_new_save_dir(cfg.train.save_dir, cfg, suffix=spec.run_suffix)
-                )
                 reporter_context = ReporterContext(
                     reporter_kind,
-                    run_name=run_name,
-                    config=resolved_config,
+                    run_name=task.run_name(cfg),
+                    config=cast(dict[str, Any], OmegaConf.to_container(cfg, resolve=True)),
                     mlflow=cast(dict[str, Any], OmegaConf.to_container(cfg.mlflow, resolve=True)),
                     wandb=cast(dict[str, Any], OmegaConf.to_container(cfg.wandb, resolve=True)),
-                    resume_run_id=resume_run_id(checkpoint_dir, reporter_kind),
+                    resume_run_id=task.resume_run_id(cfg, reporter_kind),
                 )
                 reporter = stack.enter_context(reporter_context)
             except BaseException as exc:
                 local_open_error = exc
         if _reporter_open_failed(local_open_error):
-            _destroy_group()
+            teardown_process_group(accelerator, logger=logger, wait=False)
             if local_open_error is not None:
                 raise local_open_error
             raise RuntimeError("Reporter failed to open on another rank")
+        ctx = RunContext(cfg=cfg, accelerator=accelerator, logger=logger, reporter=reporter)
         try:
-            run = _run_train()
+            run = task.run(ctx)
         except BaseException:
-            _destroy_group()
+            teardown_process_group(accelerator, logger=logger, wait=False)
             raise
-        _finish(run)
+        teardown_process_group(accelerator, logger=logger, wait=True)
+        raise_deferred_error()
+        if accelerator.is_main_process:
+            task.finish(run)
+    return run

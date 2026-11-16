@@ -1,8 +1,8 @@
 # Training
 
-Every example enters training through `run_experiment`. That function builds the model, the datasets, the optimizer, and the scheduler, then trains a `MyDistributedPipeline`. `get_train_class` returns that class together with `MyTrainingConfig`. One process still constructs an `Accelerator`.
+Every example enters training through `run_experiment` with a `TrainSpec`. That task builds the model, the datasets, the optimizer, and the scheduler, then trains a `MyDistributedPipeline`. `get_train_class` returns that class together with `MyTrainingConfig`. One process still constructs an `Accelerator`.
 
-See [Running an experiment](experiment.md) for Hydra layout, `ExperimentSpec`, and teardown hooks. Metrics go through [Experiment tracking](reporter.md), not direct `wandb` calls from the pipeline.
+See [Running an experiment](experiment.md) for Hydra layout, `TrainSpec`, and teardown hooks. Metrics go through [Experiment tracking](reporter.md), not direct `wandb` calls from the pipeline.
 
 The loop is the same for EDM, flow matching, VAE, and GAN. The module inside `ModelForPipeline` is what changes. Its `forward(**batch)` returns a tensor, or a dict that contains `loss`.
 
@@ -208,7 +208,7 @@ A reporter failure on the main process is remembered and shared on a log interva
 !!! note "A halted epoch stays open"
     A halt inside the step loop leaves the epoch unfinished. `current_epoch` stays, and `current_step_in_epoch` stays on the next batch. Resume continues from those counters. The final save and `TRAINING_END` still run.
 
-After `pipeline.train()` returns inside `run_experiment`, optional `pre_dist_teardown` runs on every rank while the process group is still alive (skipped when the pipeline halted). Then `_finish` waits on all ranks, destroys the process group, raises any deferred error, and runs `post_dist_teardown` on the main process only. Details are in [Running an experiment — teardown](experiment.md#post-distributed-teardown).
+After `pipeline.train()` returns inside `TrainSpec.run`, optional `pre_dist_teardown` runs on every rank while the process group is still alive (skipped when the pipeline halted). Then `run_experiment` calls `teardown_process_group(..., wait=True)`, raises any deferred error, and runs `post_dist_teardown` on the main process only. Details are in [Running an experiment — teardown](experiment.md#teardown-hooks).
 
 ## Callbacks
 
@@ -261,4 +261,4 @@ Signatures live in the [pipeline API](api/pipeline.md). The fields below are the
 
 ## See also
 
-The [pipeline API](api/pipeline.md) documents the classes. [Learning rate](learning-rate.md) documents why the scheduler length is the per-rank step count times `num_processes`. Sampling and plotting run in each example's `post_dist_teardown`; see [Running an experiment](experiment.md#post-distributed-teardown).
+The [pipeline API](api/pipeline.md) documents the classes. [Learning rate](learning-rate.md) documents why the scheduler length is the per-rank step count times `num_processes`. Sampling and plotting run in each example's `infer*.py`, which loads the trained checkpoint; see [Running an experiment](experiment.md#inference-inferspec).

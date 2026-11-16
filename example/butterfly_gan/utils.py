@@ -3,7 +3,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from typing import Any, cast
+from typing import Any
 
 import torch
 from omegaconf import DictConfig
@@ -19,7 +19,6 @@ from mlkit.util.utils_for_main import (
     get_optimizer,  # noqa: F401
     get_run_name,  # noqa: F401
     get_train_class,  # noqa: F401
-    load_checkpoint,  # noqa: F401
 )
 
 
@@ -125,7 +124,7 @@ def get_collate_fn(cfg: DictConfig):
     return collate_fn
 
 
-def get_model(cfg: DictConfig, model=None, final_model_ckpt_path=None):
+def get_model(cfg: DictConfig, model=None):
     from mlkit.generative_model.gan import GAN, GANConfig
     from mlkit.model.model_for_pipeline import ModelForPipeline
 
@@ -151,7 +150,8 @@ def get_model(cfg: DictConfig, model=None, final_model_ckpt_path=None):
     pipeline_model = ModelForPipeline(model=gan)
     pipeline_model.register_hooks([build_gan_metrics_hook()])
 
-    if final_model_ckpt_path is not None and final_model_ckpt_path != "":
-        pipeline_model = cast(ModelForPipeline, load_checkpoint(pipeline_model, final_model_ckpt_path))
-
     return {"model": pipeline_model}
+
+
+def run_suffix(cfg: DictConfig) -> str:
+    return f"-latent:{cfg.gan.latent_dim}"

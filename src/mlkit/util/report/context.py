@@ -1,4 +1,4 @@
-"""Reporter lifecycle context manager (not :class:`mlkit.util.experiment.MaterializedRun`)."""
+"""Reporter lifecycle context manager (not :class:`mlkit.util.experiment.RunContext`)."""
 
 from __future__ import annotations
 

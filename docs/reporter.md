@@ -56,11 +56,11 @@ wandb:
 
 On the **main process only**, `run_experiment`:
 
-1. Resolves `run_name` and the resolved Hydra config.
-2. Reads the latest checkpoint directory and `resume_run_id` when continuing a run.
+1. Asks the task for `run_name` and resolves the Hydra config.
+2. Asks the task for `resume_run_id`. `TrainSpec` reads it from the latest checkpoint directory when continuing a run; `InferSpec` always opens a new run named `<training run>-infer`.
 3. Enters `ReporterContext`, which calls `open()` on enter and `close(success=...)` on exit.
 
-After the LR scheduler is built, the runner may call `reporter.store_config` with the **post-scheduler** config so the tracked run matches what training actually uses.
+After the LR scheduler is built, `TrainSpec` calls `reporter.store_config` with the **post-scheduler** config so the tracked run matches what training actually uses. Task hooks reach the same run through `run.reporter`, which is `None` off the main process.
 
 ## Pipeline connection
 

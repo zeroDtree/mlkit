@@ -9,27 +9,24 @@ import hydra
 from omegaconf import DictConfig
 from utils import get_collate_fn, get_dataset, get_model
 
-from mlkit.util.experiment import ExperimentSpec, run_experiment
-
-_conditional_models: dict = {}
+from mlkit.util.experiment import TrainSpec, run_experiment
 
 
-def pre_dist_teardown(ctx):
+def pre_dist_teardown(run):
     """Train the conditional flow on every rank while the process group is alive."""
-    cfg = ctx.cfg
-    accelerator = ctx.accelerator
-    del ctx.model_bundle, ctx.pipeline, ctx.train_set
+    cfg = run.cfg
+    accelerator = run.accelerator
+    del run.model_bundle, run.pipeline, run.train_set
     from typing import Any, cast
 
     from omegaconf import OmegaConf
     from shared.dataset import MoonsDataset
-    from utils import get_conditional_collate_fn, get_conditional_model
+    from utils import get_conditional_collate_fn, get_conditional_model, get_conditional_save_dir
 
     from mlkit.pipeline.pipeline import LogConfig
     from mlkit.util.log import get_and_create_new_log_dir, get_logger
     from mlkit.util.utils_for_main import (
         get_learing_rate_scheduler,
-        get_new_save_dir,
         get_optimizer,
         get_train_class,
     )
@@ -45,7 +42,7 @@ def pre_dist_teardown(ctx):
 
     PipelineClass, TrainingConfigClass = get_train_class()
     train_kwargs: dict[str, Any] = cast(dict[str, Any], OmegaConf.to_container(cfg.train, resolve=True))
-    train_kwargs["save_dir"] = get_new_save_dir(cfg.train.save_dir, cfg, suffix="_cfm")
+    train_kwargs["save_dir"] = get_conditional_save_dir(cfg)
     cond_training_config = TrainingConfigClass(**train_kwargs)
     log_kwargs: dict[str, Any] = cast(dict[str, Any], OmegaConf.to_container(cfg.log, resolve=True))
     log_config = LogConfig(**log_kwargs)
@@ -64,121 +61,15 @@ def pre_dist_teardown(ctx):
         logger=logger,
         collate_fn=cond_collate,
     )
-    if ctx.reporter is not None:
-        cond_pipeline.add_callbacks([ctx.reporter.as_callback()])
+    if run.reporter is not None:
+        cond_pipeline.add_callbacks([run.reporter.as_callback()])
     cond_pipeline.train()
-    _conditional_models["model"] = cond_pipeline_model
 
 
-def post_dist_teardown(ctx):
-    import matplotlib.pyplot as plt
-    import torch
-    from torch import Tensor
-
-    cfg = ctx.cfg
-    model_bundle = ctx.model_bundle
-    accelerator = ctx.accelerator
-    del ctx.pipeline, ctx.train_set
-
-    model = model_bundle["model"].model
-    sampling_hook_handlers = model_bundle["sampling_hook_handlers"]
-    model = model.to(accelerator.device)
-    n_samples = 256
-    n_steps = cfg.flow.n_discretization_steps
-    time_steps = torch.linspace(0, 1.0, n_steps + 1)
-
-    # --- Unconditional sampling ---
-    for handler in sampling_hook_handlers:
-        handler.disable()
-    result: dict = model.sampling(shape=(n_samples, 2), device=accelerator.device, return_all=True)
-    x_list = [x.detach().cpu() for x in result["x_list"]]
-
-    fig, axes = plt.subplots(1, n_steps + 1, figsize=(30, 4), sharex=True, sharey=True)
-    axes[0].scatter(x_list[0][:, 0], x_list[0][:, 1], s=10)
-    axes[0].set_title(f"t = {time_steps[0]:.2f}")
-    axes[0].set_xlim(-3.0, 3.0)
-    axes[0].set_ylim(-3.0, 3.0)
-    for i in range(n_steps):
-        x = x_list[i + 1]
-        axes[i + 1].scatter(x[:, 0], x[:, 1], s=10)
-        axes[i + 1].set_title(f"t = {time_steps[i + 1]:.2f}")
-    fig.tight_layout()
-    fig.savefig("sampling_unconditional.png")
-    plt.close(fig)
-
-    # --- Classifier-guided conditional sampling ---
-    for handler in sampling_hook_handlers:
-        handler.enable()
-    sigma = 1.0
-    x_noise = torch.randn(n_samples, 2) * sigma
-    c_eval = torch.randint(0, 2, (n_samples, 1), dtype=torch.float32, device=accelerator.device)
-    result_c: dict = model.sampling(
-        shape=(n_samples, 2),
-        device=accelerator.device,
-        return_all=True,
-        sampling_condition=c_eval,
-    )
-    x_list_c = [x.detach().cpu() for x in result_c["x_list"]]
-    colors = ["blue" if lbl == 0 else "orange" for lbl in c_eval.squeeze().tolist()]
-
-    fig, axes = plt.subplots(1, n_steps + 1, figsize=(4 * (n_steps + 1), 4), sharex=True, sharey=True)
-    axes[0].scatter(x_noise[:, 0], x_noise[:, 1], s=10, c=colors)
-    axes[0].set_title(f"t = {time_steps[0]:.2f}")
-    axes[0].set_xlim(-3.0, 3.0)
-    axes[0].set_ylim(-3.0, 3.0)
-    for i in range(n_steps):
-        x = x_list_c[i + 1]
-        axes[i + 1].scatter(x[:, 0], x[:, 1], s=10, c=colors)
-        axes[i + 1].set_title(f"t = {time_steps[i + 1]:.2f}")
-        axes[i + 1].set_xlim(-3.0, 3.0)
-        axes[i + 1].set_ylim(-3.0, 3.0)
-    fig.tight_layout()
-    fig.savefig("sampling_condition.png")
-    plt.close(fig)
-
-    # Sample the conditional flow trained on every rank before the process group was destroyed.
-    cond_flow = _conditional_models["model"].model
-    c_cfm = torch.randint(0, 2, (n_samples, 1), dtype=torch.float32, device=accelerator.device)
-    colors_cfm = ["blue" if lbl == 0 else "orange" for lbl in c_cfm.squeeze().tolist()]
-
-    sampling_result = cond_flow.sampling(
-        shape=(n_samples, 2),
-        device=accelerator.device,
-        return_all=True,
-        sampling_condition=c_cfm,
-    )
-    x_list: list[Tensor] = sampling_result["x_list"]
-
-    cfm_plot_every = 20
-    cfm_plot_indices = list(range(0, len(x_list), cfm_plot_every))
-    if cfm_plot_indices[-1] != len(x_list) - 1:
-        cfm_plot_indices.append(len(x_list) - 1)
-    cfm_time_steps = torch.linspace(0, 1.0, len(x_list))
-
-    fig, axes = plt.subplots(
-        1,
-        len(cfm_plot_indices),
-        figsize=(4 * len(cfm_plot_indices), 4),
-        sharex=True,
-        sharey=True,
-    )
-    for plot_count, idx in enumerate(cfm_plot_indices):
-        x_plot = x_list[idx].detach().cpu()
-        axes[plot_count].scatter(x_plot[:, 0], x_plot[:, 1], s=10, c=colors_cfm)
-        axes[plot_count].set_title(f"t = {cfm_time_steps[idx]:.2f}")
-        axes[plot_count].set_xlim(-3.0, 3.0)
-        axes[plot_count].set_ylim(-3.0, 3.0)
-
-    fig.tight_layout()
-    fig.savefig("conditional_flow_matching.png")
-    plt.close(fig)
-
-
-SPEC = ExperimentSpec(
+SPEC = TrainSpec(
     get_model=get_model,
     get_dataset=get_dataset,
     get_collate=get_collate_fn,
-    post_dist_teardown=post_dist_teardown,
     pre_dist_teardown=pre_dist_teardown,
     disable_train_hooks=True,
 )

@@ -8,10 +8,15 @@ import torch
 from torch.nn import Module
 
 
-class EMA:
-    """Keep a decayed shadow copy of a module's parameters for inference."""
+class EMA(Module):
+    """Keep a decayed shadow copy of a module's parameters for inference.
+
+    Assigned as an attribute of a module, the shadow is part of that module's
+    ``state_dict`` and therefore of its checkpoints.
+    """
 
     def __init__(self, module: Module, decay: float = 0.999) -> None:
+        super().__init__()
         self.decay = decay
         self.shadow = deepcopy(module).eval().requires_grad_(False)
 

@@ -45,6 +45,6 @@ To bulk-fix legacy ``Args`` type lines in existing docstrings:
 python3 scripts/normalize_docstrings.py
 ```
 
-Canonical examples: `mlkit.util.report.run_file`, `mlkit.util.failure`, `mlkit.util.experiment.types`.
+Canonical examples: `mlkit.util.report.run_file`, `mlkit.util.failure`, `mlkit.util.experiment.runner`.
 
-Example entry scripts (`example/**/main*.py`) place the **module docstring first**, then `sys.path` setup, then remaining imports (Ruff E402).
+Example entry scripts (`example/**/main*.py`, `example/**/infer*.py`) place the **module docstring first**, then `sys.path` setup, then remaining imports (Ruff E402).

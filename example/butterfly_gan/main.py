@@ -8,63 +8,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import hydra
 from omegaconf import DictConfig
 from shared.model import build_ttur_optimizer
-from utils import get_collate_fn, get_dataset, get_model
+from utils import get_collate_fn, get_dataset, get_model, run_suffix
 
-from mlkit.generative_model.gan import GAN
-from mlkit.util.experiment import ExperimentSpec, run_experiment
+from mlkit.util.experiment import TrainSpec, run_experiment
 from mlkit.util.huggingface import HF_MIRROR  # noqa: F401
-
-
-def _tensor_to_pil_list(images):
-    from diffusers.utils.pil_utils import numpy_to_pil
-
-    images = (images / 2 + 0.5).clamp(0, 1)
-    images = images.cpu().permute(0, 2, 3, 1).numpy()
-    return numpy_to_pil(images)
-
-
-def _to_pil_grid(images, rows: int = 4, cols: int = 4):
-    from diffusers.utils.pil_utils import make_image_grid
-
-    return make_image_grid(_tensor_to_pil_list(images), rows=rows, cols=cols)
-
-
-def post_dist_teardown(ctx):
-    cfg = ctx.cfg
-    model_bundle = ctx.model_bundle
-    accelerator = ctx.accelerator
-    train_set = ctx.train_set
-    del ctx.train_set
-    import torch
-
-    gan: GAN = model_bundle["model"].model
-    gan = gan.to(accelerator.device)
-    gan.eval()
-    if gan.ema is not None:
-        gan.ema.copy_to(gan.generator)
-
-    image_size = cfg.dataset.image_size
-    n_samples = 16
-
-    with torch.no_grad():
-        samples = gan.sampling(
-            shape=(n_samples, 3, image_size, image_size),
-            device=accelerator.device,
-        )
-        real_data = torch.stack(train_set[0:n_samples]["images"]).to(accelerator.device)
-
-    latent_tag = f"latent:{cfg.gan.latent_dim}"
-    sampling_path = f"sampling-{latent_tag}.png"
-    comparison_path = f"comparison-{latent_tag}.png"
-
-    _to_pil_grid(samples["x"]).save(sampling_path)
-    print(f"Saved {sampling_path} (generated samples, EMA)")
-
-    from diffusers.utils.pil_utils import make_image_grid
-
-    real_and_generated = _tensor_to_pil_list(real_data) + _tensor_to_pil_list(samples["x"])
-    make_image_grid(real_and_generated, rows=8, cols=4).save(comparison_path)
-    print(f"Saved {comparison_path} (real on top, generated on bottom)")
 
 
 def _get_optimizer(model, cfg):
@@ -73,13 +20,12 @@ def _get_optimizer(model, cfg):
 
 @hydra.main(config_path=".", config_name="config", version_base=None)
 def main(cfg: DictConfig):
-    spec = ExperimentSpec(
+    spec = TrainSpec(
         get_model=get_model,
         get_dataset=get_dataset,
         get_collate=get_collate_fn,
         get_optimizer=_get_optimizer,
-        post_dist_teardown=post_dist_teardown,
-        run_suffix=f"-latent:{cfg.gan.latent_dim}",
+        run_suffix=run_suffix(cfg),
     )
     run_experiment(cfg, spec)
 

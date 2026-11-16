@@ -3,7 +3,6 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from typing import cast
 
 import torch
 from omegaconf import DictConfig
@@ -23,7 +22,6 @@ from mlkit.util.utils_for_main import (
     get_optimizer,  # noqa: F401
     get_run_name,  # noqa: F401
     get_train_class,  # noqa: F401
-    load_checkpoint,  # noqa: F401
 )
 
 
@@ -46,7 +44,7 @@ def get_collate_fn(cfg: DictConfig):
     return collate_fn
 
 
-def get_model(cfg: DictConfig, model=None, final_model_ckpt_path=None):
+def get_model(cfg: DictConfig, model=None):
     from mlkit.diffusion.conditioner.conditioner import LGDConditioner
     from mlkit.diffusion.euclidean_edm_diffuser import (
         EuclideanEDMConfig,
@@ -94,9 +92,6 @@ def get_model(cfg: DictConfig, model=None, final_model_ckpt_path=None):
     train_hook_handlers = gm.register_hooks([train_hook])
 
     pipeline_model = ModelForPipeline(model=gm)
-
-    if final_model_ckpt_path is not None and final_model_ckpt_path != "":
-        pipeline_model = cast(ModelForPipeline, load_checkpoint(pipeline_model, final_model_ckpt_path))
 
     return {
         "model": pipeline_model,

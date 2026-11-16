@@ -7,76 +7,19 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import hydra
 from omegaconf import DictConfig
-from utils import get_collate_fn, get_dataset, get_model
+from utils import get_collate_fn, get_dataset, get_model, run_suffix
 
-from mlkit.generative_model.vae import GaussianVAE
-from mlkit.util.experiment import ExperimentSpec, run_experiment
+from mlkit.util.experiment import TrainSpec, run_experiment
 from mlkit.util.huggingface import HF_MIRROR  # noqa: F401
-
-
-def _tensor_to_pil_list(images):
-    from diffusers.utils.pil_utils import numpy_to_pil
-
-    images = (images / 2 + 0.5).clamp(0, 1)
-    images = images.cpu().permute(0, 2, 3, 1).numpy()
-    return numpy_to_pil(images)
-
-
-def _to_pil_grid(images, rows: int = 4, cols: int = 4):
-    from diffusers.utils.pil_utils import make_image_grid
-
-    return make_image_grid(_tensor_to_pil_list(images), rows=rows, cols=cols)
-
-
-def post_dist_teardown(ctx):
-    cfg = ctx.cfg
-    pipeline = ctx.pipeline
-    accelerator = ctx.accelerator
-    train_set = ctx.train_set
-    del ctx.train_set
-    import torch
-
-    model: GaussianVAE = get_model(
-        cfg,
-        final_model_ckpt_path=f"{pipeline.get_latest_checkpoint_dir()}/model.safetensors",
-    )["model"].model
-    model = model.to(accelerator.device)
-    model.eval()
-
-    image_size = cfg.dataset.image_size
-    n_samples = 16
-
-    with torch.no_grad():
-        samples = model.sampling(
-            shape=(n_samples, 3, image_size, image_size),
-            device=accelerator.device,
-        )
-        real_data = torch.stack(train_set[0:n_samples]["images"]).to(accelerator.device)
-        batch = {"gt_data": real_data, "padding_mask": torch.ones_like(real_data)}
-        recon = model.compute_loss(**batch)
-
-    kl_tag = f"kl_weight:{cfg.vae.kl_weight}"
-    sampling_path = f"sampling-{kl_tag}.png"
-    reconstruction_path = f"reconstruction-{kl_tag}.png"
-
-    _to_pil_grid(samples["x"]).save(sampling_path)
-    print(f"Saved {sampling_path} (generated samples)")
-
-    from diffusers.utils.pil_utils import make_image_grid
-
-    real_and_recon = _tensor_to_pil_list(real_data) + _tensor_to_pil_list(recon["x_hat"])
-    make_image_grid(real_and_recon, rows=8, cols=4).save(reconstruction_path)
-    print(f"Saved {reconstruction_path} (real on top, reconstruction on bottom)")
 
 
 @hydra.main(config_path=".", config_name="config", version_base=None)
 def main(cfg: DictConfig):
-    spec = ExperimentSpec(
+    spec = TrainSpec(
         get_model=get_model,
         get_dataset=get_dataset,
         get_collate=get_collate_fn,
-        post_dist_teardown=post_dist_teardown,
-        run_suffix=f"-kl_weight:{cfg.vae.kl_weight}",
+        run_suffix=run_suffix(cfg),
     )
     run_experiment(cfg, spec)
 
