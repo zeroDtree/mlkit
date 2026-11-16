@@ -28,14 +28,20 @@ CONFIG_SNAPSHOT_NAME = "config.yaml"
 def checkpoint_root(cfg: DictConfig, suffix: str = "") -> str:
     """Return the directory holding the ``checkpoint_*`` folders of the training run.
 
+    Returns:
+        ``""`` when ``train.save_dir`` is empty or null, so saving and resume are disabled.
+
     Args:
         cfg: experiment config; ``train.save_dir``, model, dataset, ``optimizer.lr``,
             and ``train.batch_size`` select the directory.
         suffix: the training task's ``run_suffix``.
     """
+    save_dir = cfg.train.get("save_dir")
+    if save_dir is None or str(save_dir).strip() == "":
+        return ""
     from mlkit.util.utils_for_main import get_new_save_dir
 
-    return get_new_save_dir(cfg.train.save_dir, cfg, suffix=suffix)
+    return get_new_save_dir(save_dir, cfg, suffix=suffix)
 
 
 class ConfigSnapshotCallback(BaseCallback):
@@ -99,9 +105,9 @@ class TrainSpec(Task[TrainRun]):
     also holds the resolved config as :data:`CONFIG_SNAPSHOT_NAME`.
 
     Hook timing (relative to ``accelerator.end_training()``):
-        ``pre_dist_teardown``: every rank, after ``pipeline.train()`` while the
-            process group is still alive (optional second training, shared reporter).
-        ``post_dist_teardown``: global main only, after ``end_training``.
+        ``after_train``: every rank, after ``pipeline.train()`` while the process
+            group is still alive (optional second training, shared reporter).
+        ``on_finish``: global main only, inside :meth:`finish` after ``end_training``.
     """
 
     section: ClassVar[str] = "train"
@@ -110,8 +116,8 @@ class TrainSpec(Task[TrainRun]):
     get_dataset: GetDatasetFn
     get_collate: GetCollateFn
     get_optimizer: GetOptimizerFn | None = None
-    pre_dist_teardown: Callable[[TrainRun], None] | None = None
-    post_dist_teardown: Callable[[TrainRun], None] | None = None
+    after_train: Callable[[TrainRun], None] | None = None
+    on_finish: Callable[[TrainRun], None] | None = None
     run_suffix: str = ""
     disable_train_hooks: bool = True
 
@@ -129,13 +135,13 @@ class TrainSpec(Task[TrainRun]):
     def run(self, ctx: RunContext) -> TrainRun:
         run = self._materialize(ctx)
         run.pipeline.train()
-        if self.pre_dist_teardown is not None and not run.pipeline.halted:
-            self.pre_dist_teardown(run)
+        if self.after_train is not None and not run.pipeline.halted:
+            self.after_train(run)
         return run
 
     def finish(self, run: TrainRun) -> None:
-        if self.post_dist_teardown is not None:
-            self.post_dist_teardown(run)
+        if self.on_finish is not None:
+            self.on_finish(run)
 
     def _materialize(self, ctx: RunContext) -> TrainRun:
         """Build model, data, optimizer, scheduler, and pipeline (no ``pipeline.train()``).

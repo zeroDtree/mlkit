@@ -121,8 +121,8 @@ def _install(
 def _run(
     _events: list[str],
     *,
-    post_dist_teardown: Callable | None = None,
-    pre_dist_teardown: Callable | None = None,
+    on_finish: Callable | None = None,
+    after_train: Callable | None = None,
     bundle: dict[str, Any] | None = None,
     run_suffix: str = "",
 ) -> None:
@@ -144,8 +144,8 @@ def _run(
         get_model=get_model,
         get_dataset=get_dataset,
         get_collate=get_collate,
-        post_dist_teardown=post_dist_teardown,
-        pre_dist_teardown=pre_dist_teardown,
+        on_finish=on_finish,
+        after_train=after_train,
         run_suffix=run_suffix,
     )
     run_experiment(_cfg(), spec)
@@ -213,17 +213,42 @@ def test_run_suffix_names_the_run_and_the_checkpoint_dir(monkeypatch: pytest.Mon
     assert log_dirs == [("logs", {"suffix": str(os.getpid())})]
 
 
+def test_empty_save_dir_disables_checkpointing(monkeypatch: pytest.MonkeyPatch):
+    events: list[str] = []
+    configs: list[Any] = []
+    _install(monkeypatch, events, is_main=True, configs=configs)
+    cfg = _cfg()
+    cfg.train.save_dir = ""
+
+    def get_model(cfg: DictConfig, **kwargs: Any):
+        del cfg, kwargs
+        return {"model": torch.nn.Linear(1, 1)}
+
+    def get_dataset(cfg: DictConfig):
+        del cfg
+        return [0, 1], None, None
+
+    def get_collate(cfg: DictConfig):
+        del cfg
+        return None
+
+    spec = TrainSpec(get_model=get_model, get_dataset=get_dataset, get_collate=get_collate)
+    run_experiment(cfg, spec)
+
+    assert [config.save_dir for config in configs] == [""]
+
+
 def test_every_rank_uses_the_same_checkpoint_dir(monkeypatch: pytest.MonkeyPatch):
     expected = "checkpoints/toy/toy/-lr:0.01-bs:2"
 
-    def post_dist_teardown(ctx) -> None:
+    def on_finish(ctx) -> None:
         del ctx
 
     for is_main in (True, False):
         events: list[str] = []
         configs: list[Any] = []
         _install(monkeypatch, events, is_main=is_main, configs=configs)
-        _run(events, post_dist_teardown=post_dist_teardown)
+        _run(events, on_finish=on_finish)
         assert [config.save_dir for config in configs] == [expected]
 
 
@@ -231,12 +256,12 @@ def test_main_process_destroys_group_before_post_train(monkeypatch: pytest.Monke
     events: list[str] = []
     accelerator = _install(monkeypatch, events, is_main=True)
 
-    def post_dist_teardown(ctx) -> None:
+    def on_finish(ctx) -> None:
         del ctx.cfg, ctx.model_bundle, ctx.pipeline, ctx.train_set
         assert ctx.accelerator is accelerator
         events.append("post")
 
-    _run(events, post_dist_teardown=post_dist_teardown)
+    _run(events, on_finish=on_finish)
     assert events == ["train", "wait", "end", "post"]
 
 
@@ -244,11 +269,11 @@ def test_non_main_process_destroys_group_without_post_train(monkeypatch: pytest.
     events: list[str] = []
     _install(monkeypatch, events, is_main=False)
 
-    def post_dist_teardown(ctx) -> None:
+    def on_finish(ctx) -> None:
         del ctx
         events.append("post")
 
-    _run(events, post_dist_teardown=post_dist_teardown)
+    _run(events, on_finish=on_finish)
     assert events == ["train", "wait", "end"]
 
 
@@ -256,12 +281,12 @@ def test_train_error_destroys_group_without_barrier(monkeypatch: pytest.MonkeyPa
     events: list[str] = []
     accelerator = _install(monkeypatch, events, is_main=True, train_error=RuntimeError("boom"))
 
-    def post_dist_teardown(ctx) -> None:
+    def on_finish(ctx) -> None:
         del ctx
         events.append("post")
 
     with pytest.raises(RuntimeError, match="boom"):
-        _run(events, post_dist_teardown=post_dist_teardown)
+        _run(events, on_finish=on_finish)
 
     assert events == ["train", "end"]
     accelerator.wait_for_everyone.assert_not_called()
@@ -277,12 +302,12 @@ def test_end_training_error_keeps_the_train_error(monkeypatch: pytest.MonkeyPatc
 
     accelerator.end_training.side_effect = end_training
 
-    def post_dist_teardown(ctx) -> None:
+    def on_finish(ctx) -> None:
         del ctx
         events.append("post")
 
     with pytest.raises(RuntimeError, match="boom"):
-        _run(events, post_dist_teardown=post_dist_teardown)
+        _run(events, on_finish=on_finish)
 
     assert events == ["train", "end"]
     accelerator.wait_for_everyone.assert_not_called()
@@ -314,13 +339,13 @@ def test_post_train_error_stays_inside_reporter(monkeypatch: pytest.MonkeyPatch)
 
     monkeypatch.setattr("mlkit.util.report.ReporterContext", _OpenScope)
 
-    def post_dist_teardown(ctx) -> None:
+    def on_finish(ctx) -> None:
         del ctx
         events.append("post")
         raise RuntimeError("post failed")
 
     with pytest.raises(RuntimeError, match="post failed"):
-        _run(events, post_dist_teardown=post_dist_teardown)
+        _run(events, on_finish=on_finish)
 
     assert events == ["train", "wait", "end", "post"]
     assert [type(exc) for exc in seen] == [RuntimeError]
@@ -335,12 +360,12 @@ def test_deferred_error_is_raised_after_teardown(monkeypatch: pytest.MonkeyPatch
         on_train=lambda: defer_error(RuntimeError("log failed")),
     )
 
-    def post_dist_teardown(ctx) -> None:
+    def on_finish(ctx) -> None:
         del ctx
         events.append("post")
 
     with pytest.raises(RuntimeError, match="log failed"):
-        _run(events, post_dist_teardown=post_dist_teardown)
+        _run(events, on_finish=on_finish)
 
     assert events == ["train", "wait", "end"]
 
@@ -354,16 +379,16 @@ def test_deferred_error_skips_after_train_on_main(monkeypatch: pytest.MonkeyPatc
         on_train=lambda: defer_error(RuntimeError("log failed")),
     )
 
-    def pre_dist_teardown(ctx) -> None:
+    def after_train(ctx) -> None:
         del ctx
         events.append("after")
 
-    def post_dist_teardown(ctx) -> None:
+    def on_finish(ctx) -> None:
         del ctx
         events.append("post")
 
     with pytest.raises(RuntimeError, match="log failed"):
-        _run(events, post_dist_teardown=post_dist_teardown, pre_dist_teardown=pre_dist_teardown)
+        _run(events, on_finish=on_finish, after_train=after_train)
 
     assert events == ["train", "wait", "end"]
 
@@ -372,15 +397,15 @@ def test_shared_halt_skips_after_train_on_non_main(monkeypatch: pytest.MonkeyPat
     events: list[str] = []
     accelerator = _install(monkeypatch, events, is_main=False, halt=True)
 
-    def pre_dist_teardown(ctx) -> None:
+    def after_train(ctx) -> None:
         del ctx
         events.append("after")
 
-    def post_dist_teardown(ctx) -> None:
+    def on_finish(ctx) -> None:
         del ctx
         events.append("post")
 
-    _run(events, post_dist_teardown=post_dist_teardown, pre_dist_teardown=pre_dist_teardown)
+    _run(events, on_finish=on_finish, after_train=after_train)
 
     assert events == ["train", "wait", "end"]
     accelerator.set_trigger.assert_not_called()
@@ -422,10 +447,10 @@ def test_scheduler_rewrite_replaces_the_stored_config(monkeypatch: pytest.Monkey
 
     monkeypatch.setattr("mlkit.util.report.ReporterContext", _RecordingScope)
 
-    def post_dist_teardown(ctx) -> None:
+    def on_finish(ctx) -> None:
         del ctx
 
-    _run(events, post_dist_teardown=post_dist_teardown)
+    _run(events, on_finish=on_finish)
 
     assert opened[0]["train"]["n_steps"] == 1
     assert stored[-1]["train"]["n_steps"] == 99
@@ -435,15 +460,15 @@ def test_after_train_runs_on_main_before_teardown(monkeypatch: pytest.MonkeyPatc
     events: list[str] = []
     _install(monkeypatch, events, is_main=True)
 
-    def pre_dist_teardown(ctx) -> None:
+    def after_train(ctx) -> None:
         del ctx
         events.append("after")
 
-    def post_dist_teardown(ctx) -> None:
+    def on_finish(ctx) -> None:
         del ctx
         events.append("post")
 
-    _run(events, post_dist_teardown=post_dist_teardown, pre_dist_teardown=pre_dist_teardown)
+    _run(events, on_finish=on_finish, after_train=after_train)
     assert events == ["train", "after", "wait", "end", "post"]
 
 
@@ -451,15 +476,15 @@ def test_after_train_runs_on_non_main_without_post_train(monkeypatch: pytest.Mon
     events: list[str] = []
     _install(monkeypatch, events, is_main=False)
 
-    def pre_dist_teardown(ctx) -> None:
+    def after_train(ctx) -> None:
         del ctx
         events.append("after")
 
-    def post_dist_teardown(ctx) -> None:
+    def on_finish(ctx) -> None:
         del ctx
         events.append("post")
 
-    _run(events, post_dist_teardown=post_dist_teardown, pre_dist_teardown=pre_dist_teardown)
+    _run(events, on_finish=on_finish, after_train=after_train)
     assert events == ["train", "after", "wait", "end"]
 
 
@@ -467,17 +492,17 @@ def test_after_train_error_destroys_group_without_barrier(monkeypatch: pytest.Mo
     events: list[str] = []
     accelerator = _install(monkeypatch, events, is_main=True)
 
-    def pre_dist_teardown(ctx) -> None:
+    def after_train(ctx) -> None:
         del ctx
         events.append("after")
         raise RuntimeError("after failed")
 
-    def post_dist_teardown(ctx) -> None:
+    def on_finish(ctx) -> None:
         del ctx
         events.append("post")
 
     with pytest.raises(RuntimeError, match="after failed"):
-        _run(events, post_dist_teardown=post_dist_teardown, pre_dist_teardown=pre_dist_teardown)
+        _run(events, on_finish=on_finish, after_train=after_train)
 
     assert events == ["train", "after", "end"]
     accelerator.wait_for_everyone.assert_not_called()
@@ -493,12 +518,12 @@ def test_log_dir_error_destroys_group_without_training(monkeypatch: pytest.Monke
 
     monkeypatch.setattr("mlkit.util.log.get_and_create_new_log_dir", create_log_dir)
 
-    def post_dist_teardown(ctx) -> None:
+    def on_finish(ctx) -> None:
         del ctx
         events.append("post")
 
     with pytest.raises(OSError, match="disk full"):
-        _run(events, post_dist_teardown=post_dist_teardown)
+        _run(events, on_finish=on_finish)
 
     assert events == ["end"]
     accelerator.wait_for_everyone.assert_not_called()
@@ -520,12 +545,12 @@ def test_reporter_open_error_destroys_group_without_training(monkeypatch: pytest
 
     monkeypatch.setattr("mlkit.util.report.ReporterContext", _FailOpenScope)
 
-    def post_dist_teardown(ctx) -> None:
+    def on_finish(ctx) -> None:
         del ctx
         events.append("post")
 
     with pytest.raises(RuntimeError, match="mlflow down"):
-        _run(events, post_dist_teardown=post_dist_teardown)
+        _run(events, on_finish=on_finish)
 
     assert events == ["end"]
     accelerator.wait_for_everyone.assert_not_called()
@@ -554,12 +579,12 @@ def test_end_training_error_keeps_the_reporter_open_error(monkeypatch: pytest.Mo
 
     monkeypatch.setattr("mlkit.util.report.ReporterContext", _FailOpenScope)
 
-    def post_dist_teardown(ctx) -> None:
+    def on_finish(ctx) -> None:
         del ctx
         events.append("post")
 
     with pytest.raises(RuntimeError, match="mlflow down"):
-        _run(events, post_dist_teardown=post_dist_teardown)
+        _run(events, on_finish=on_finish)
 
     assert events == ["end"]
     accelerator.wait_for_everyone.assert_not_called()
@@ -570,11 +595,11 @@ def test_reporter_open_is_shared_before_training(monkeypatch: pytest.MonkeyPatch
     accelerator = _install(monkeypatch, events, is_main=True, num_processes=2)
     accelerator.check_trigger.side_effect = lambda: events.append("sync") or False
 
-    def post_dist_teardown(ctx) -> None:
+    def on_finish(ctx) -> None:
         del ctx
         events.append("post")
 
-    _run(events, post_dist_teardown=post_dist_teardown)
+    _run(events, on_finish=on_finish)
     assert events == ["sync", "train", "wait", "end", "post"]
     accelerator.set_trigger.assert_not_called()
 
@@ -584,11 +609,11 @@ def test_non_main_waits_for_reporter_open_before_training(monkeypatch: pytest.Mo
     accelerator = _install(monkeypatch, events, is_main=False, num_processes=2)
     accelerator.check_trigger.side_effect = lambda: events.append("sync") or False
 
-    def post_dist_teardown(ctx) -> None:
+    def on_finish(ctx) -> None:
         del ctx
         events.append("post")
 
-    _run(events, post_dist_teardown=post_dist_teardown)
+    _run(events, on_finish=on_finish)
     assert events == ["sync", "train", "wait", "end"]
     accelerator.set_trigger.assert_not_called()
 
@@ -611,12 +636,12 @@ def test_reporter_open_error_sets_the_trigger(monkeypatch: pytest.MonkeyPatch):
 
     monkeypatch.setattr("mlkit.util.report.ReporterContext", _FailOpenScope)
 
-    def post_dist_teardown(ctx) -> None:
+    def on_finish(ctx) -> None:
         del ctx
         events.append("post")
 
     with pytest.raises(RuntimeError, match="mlflow down"):
-        _run(events, post_dist_teardown=post_dist_teardown)
+        _run(events, on_finish=on_finish)
 
     assert events == ["trigger", "sync", "end"]
     accelerator.wait_for_everyone.assert_not_called()
@@ -641,12 +666,12 @@ def test_other_rank_stops_when_reporter_open_fails(monkeypatch: pytest.MonkeyPat
 
     monkeypatch.setattr("mlkit.util.report.ReporterContext", _AssertScope)
 
-    def post_dist_teardown(ctx) -> None:
+    def on_finish(ctx) -> None:
         del ctx
         events.append("post")
 
     with pytest.raises(RuntimeError, match="Reporter failed to open on another rank"):
-        _run(events, post_dist_teardown=post_dist_teardown)
+        _run(events, on_finish=on_finish)
 
     assert events == ["sync", "end"]
     accelerator.set_trigger.assert_not_called()
@@ -674,10 +699,10 @@ def test_local_main_that_is_not_global_main_skips_the_reporter(monkeypatch: pyte
 
     monkeypatch.setattr("mlkit.util.report.ReporterContext", _AssertScope)
 
-    def post_dist_teardown(ctx) -> None:
+    def on_finish(ctx) -> None:
         del ctx
         events.append("post")
 
-    _run(events, post_dist_teardown=post_dist_teardown)
+    _run(events, on_finish=on_finish)
     assert events == ["sync", "train", "wait", "end"]
     accelerator.set_trigger.assert_not_called()

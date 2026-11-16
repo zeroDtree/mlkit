@@ -12,7 +12,7 @@ from utils import get_model
 from mlkit.util.experiment import InferSpec, run_experiment
 
 
-def post_dist_teardown(run):
+def on_finish(run):
     model_bundle = run.model_bundle
     accelerator = run.accelerator
     import matplotlib.pyplot as plt
@@ -80,7 +80,7 @@ def post_dist_teardown(run):
 
 SPEC = InferSpec(
     get_model=get_model,
-    post_dist_teardown=post_dist_teardown,
+    on_finish=on_finish,
 )
 
 

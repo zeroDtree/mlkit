@@ -13,7 +13,7 @@ from mlkit.util.experiment import InferSpec, run_experiment
 from mlkit.util.huggingface import HF_MIRROR  # noqa: F401
 
 
-def post_dist_teardown(run):
+def on_finish(run):
     cfg = run.cfg
     accelerator = run.accelerator
     import torch
@@ -73,7 +73,7 @@ def post_dist_teardown(run):
 SPEC = InferSpec(
     get_model=get_model,
     get_dataset=get_dataset,
-    post_dist_teardown=post_dist_teardown,
+    on_finish=on_finish,
 )
 
 

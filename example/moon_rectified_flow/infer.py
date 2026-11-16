@@ -27,7 +27,7 @@ def _load_conditional_flow(cfg: DictConfig, device):
     return pipeline_model.to(device).eval().model
 
 
-def post_dist_teardown(run):
+def on_finish(run):
     import matplotlib.pyplot as plt
     import torch
     from torch import Tensor
@@ -131,7 +131,7 @@ def post_dist_teardown(run):
 
 SPEC = InferSpec(
     get_model=get_model,
-    post_dist_teardown=post_dist_teardown,
+    on_finish=on_finish,
 )
 
 

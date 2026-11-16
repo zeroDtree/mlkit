@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from contextlib import contextmanager
 from typing import Any, Iterator
 
@@ -44,6 +45,10 @@ class GAN(BaseLoss):
     ``forward`` alternates discriminator and generator sub-losses so a single
     optimizer / pipeline step updates only one network at a time. When
     ``ema_decay > 0``, an EMA of the generator is updated only on generator steps.
+
+    Checkpoints written before EMA lived in the state dict may omit ``ema.shadow.*``
+    keys. On load, missing shadow weights are copied from the generator and a warning
+    is emitted, so strict checkpoint loads still succeed.
     """
 
     def __init__(
@@ -58,6 +63,35 @@ class GAN(BaseLoss):
         self.discriminator = discriminator
         self.ema: EMA | None = EMA(self.generator, decay=config.ema_decay) if config.ema_decay > 0 else None
         self._step_count = 0
+        if self.ema is not None:
+            self.register_load_state_dict_pre_hook(self._fill_missing_ema_shadow)
+
+    @staticmethod
+    def _fill_missing_ema_shadow(
+        module: GAN,
+        state_dict: dict[str, Tensor],
+        prefix: str,
+        local_metadata: dict[str, Any],
+        strict: bool,
+        missing_keys: list[str],
+        unexpected_keys: list[str],
+        error_msgs: list[str],
+    ) -> None:
+        del local_metadata, strict, missing_keys, unexpected_keys, error_msgs
+        if module.ema is None:
+            return
+        filled = False
+        for name in module.ema.shadow.state_dict():
+            ema_key = f"{prefix}ema.shadow.{name}"
+            generator_key = f"{prefix}generator.{name}"
+            if ema_key not in state_dict and generator_key in state_dict:
+                state_dict[ema_key] = state_dict[generator_key]
+                filled = True
+        if filled:
+            warnings.warn(
+                "Checkpoint has no EMA shadow weights; copied generator weights into ema.shadow for load.",
+                stacklevel=3,
+            )
 
     def prior_sampling(self, shape: tuple[int, ...]) -> Tensor:
         return torch.randn(shape)

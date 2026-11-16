@@ -13,7 +13,7 @@ from mlkit.util.experiment import InferSpec, run_experiment
 from mlkit.util.huggingface import HF_MIRROR  # noqa: F401
 
 
-def post_dist_teardown(run):
+def on_finish(run):
     cfg = run.cfg
     accelerator = run.accelerator
     from diffusers.utils.pil_utils import make_image_grid, numpy_to_pil
@@ -37,7 +37,7 @@ def post_dist_teardown(run):
 
 SPEC = InferSpec(
     get_model=get_model,
-    post_dist_teardown=post_dist_teardown,
+    on_finish=on_finish,
 )
 
 

@@ -54,8 +54,8 @@ class InferSpec(Task[InferRun]):
     Hook timing (relative to ``accelerator.end_training()``):
         ``infer``: every rank, while the process group is alive (sharded inference,
             collectives). Its return value is stored in ``run.outputs``.
-        ``post_dist_teardown``: global main only, after ``end_training`` (sampling,
-            plots; single-process work).
+        ``on_finish``: global main only, inside :meth:`finish` after ``end_training``
+            (sampling, plots; single-process work).
 
     Both hooks run under ``accelerator.autocast()``, so ``infer.mixed_precision``
     applies to them.
@@ -66,7 +66,7 @@ class InferSpec(Task[InferRun]):
     get_model: GetModelFn
     get_dataset: GetDatasetFn | None = None
     infer: Callable[[InferRun], Any] | None = None
-    post_dist_teardown: Callable[[InferRun], None] | None = None
+    on_finish: Callable[[InferRun], None] | None = None
     run_suffix: str = ""
 
     def run_name(self, cfg: DictConfig) -> str:
@@ -111,9 +111,9 @@ class InferSpec(Task[InferRun]):
         return run
 
     def finish(self, run: InferRun) -> None:
-        if self.post_dist_teardown is not None:
+        if self.on_finish is not None:
             with run.accelerator.autocast():
-                self.post_dist_teardown(run)
+                self.on_finish(run)
 
     def _checkpoint_dir(self, cfg: DictConfig) -> str:
         from mlkit.pipeline.pipeline import latest_checkpoint_dir
@@ -122,6 +122,10 @@ class InferSpec(Task[InferRun]):
         if explicit:
             return str(explicit)
         save_dir = checkpoint_root(cfg, self.run_suffix)
+        if save_dir == "":
+            raise FileNotFoundError(
+                "train.save_dir is empty, so training saved no checkpoint; set infer.checkpoint_dir"
+            )
         checkpoint_dir = latest_checkpoint_dir(save_dir)
         if checkpoint_dir is None:
             raise FileNotFoundError(f"No checkpoint under {save_dir}; train first or set infer.checkpoint_dir")

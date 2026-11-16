@@ -85,14 +85,14 @@ def _spec(
         del cfg
         return {"model": torch.nn.Linear(1, 1), **(bundle or {})}
 
-    def post_dist_teardown(run: InferRun) -> None:
+    def on_finish(run: InferRun) -> None:
         events.append(f"post={run.outputs}")
 
     return InferSpec(
         get_model=get_model or default_get_model,
         get_dataset=get_dataset,
         infer=infer,
-        post_dist_teardown=post_dist_teardown,
+        on_finish=on_finish,
         run_suffix=run_suffix,
     )
 
@@ -130,6 +130,18 @@ def test_explicit_checkpoint_dir_wins(tmp_path: Path, monkeypatch: pytest.Monkey
 
     assert run.checkpoint_dir == str(explicit)
     assert _weight(run) == 3.0
+
+
+def test_empty_train_save_dir_raises_without_post(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    events: list[str] = []
+    _install(monkeypatch, events)
+    cfg = _cfg(tmp_path)
+    cfg.train.save_dir = ""
+
+    with pytest.raises(FileNotFoundError, match="train.save_dir is empty"):
+        run_experiment(cfg, _spec(events))
+
+    assert events == ["end"]
 
 
 def test_missing_checkpoint_ends_the_group_without_post(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):

@@ -16,7 +16,7 @@ from mlkit.util.experiment import InferSpec, run_experiment
 COLLAPSE_X_HAT_STD_THRESHOLD = 0.05
 
 
-def post_dist_teardown(run):
+def on_finish(run):
     cfg = run.cfg
     accelerator = run.accelerator
     import matplotlib.pyplot as plt
@@ -71,7 +71,7 @@ def main(cfg: DictConfig):
     spec = InferSpec(
         get_model=get_model,
         get_dataset=get_dataset,
-        post_dist_teardown=post_dist_teardown,
+        on_finish=on_finish,
         run_suffix=run_suffix(cfg),
     )
     run_experiment(cfg, spec)

@@ -28,7 +28,7 @@ def _to_pil_grid(images, rows: int = 4, cols: int = 4):
     return make_image_grid(_tensor_to_pil_list(images), rows=rows, cols=cols)
 
 
-def post_dist_teardown(run):
+def on_finish(run):
     cfg = run.cfg
     accelerator = run.accelerator
     import torch
@@ -66,7 +66,7 @@ def main(cfg: DictConfig):
     spec = InferSpec(
         get_model=get_model,
         get_dataset=get_dataset,
-        post_dist_teardown=post_dist_teardown,
+        on_finish=on_finish,
         run_suffix=run_suffix(cfg),
     )
     run_experiment(cfg, spec)

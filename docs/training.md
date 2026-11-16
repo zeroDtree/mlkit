@@ -2,7 +2,7 @@
 
 Every example enters training through `run_experiment` with a `TrainSpec`. That task builds the model, the datasets, the optimizer, and the scheduler, then trains a `MyDistributedPipeline`. `get_train_class` returns that class together with `MyTrainingConfig`. One process still constructs an `Accelerator`.
 
-See [Running an experiment](experiment.md) for Hydra layout, `TrainSpec`, and teardown hooks. Metrics go through [Experiment tracking](reporter.md), not direct `wandb` calls from the pipeline.
+See [Running an experiment](experiment.md) for Hydra layout, `TrainSpec`, and hooks. Metrics go through [Experiment tracking](reporter.md), not direct `wandb` calls from the pipeline.
 
 The loop is the same for EDM, flow matching, VAE, and GAN. The module inside `ModelForPipeline` is what changes. Its `forward(**batch)` returns a tensor, or a dict that contains `loss`.
 
@@ -208,7 +208,7 @@ A reporter failure on the main process is remembered and shared on a log interva
 !!! note "A halted epoch stays open"
     A halt inside the step loop leaves the epoch unfinished. `current_epoch` stays, and `current_step_in_epoch` stays on the next batch. Resume continues from those counters. The final save and `TRAINING_END` still run.
 
-After `pipeline.train()` returns inside `TrainSpec.run`, optional `pre_dist_teardown` runs on every rank while the process group is still alive (skipped when the pipeline halted). Then `run_experiment` waits on all ranks, destroys the process group, raises any deferred error, and runs `post_dist_teardown` on the main process only. Details are in [Running an experiment — teardown](experiment.md#teardown-hooks).
+After `pipeline.train()` returns inside `TrainSpec.run`, optional `after_train` runs on every rank while the process group is still alive (skipped when the pipeline halted). Then `run_experiment` waits on all ranks, destroys the process group, raises any deferred error, and runs `on_finish` on the main process only. Details are in [Running an experiment — hooks](experiment.md#hooks).
 
 ## Callbacks
 
@@ -251,7 +251,7 @@ Signatures live in the [pipeline API](api/pipeline.md). The fields below are the
 | `gradient_accumulation_steps` | Batches between optimizer steps |
 | `real_batch_size` | When set, accumulation becomes this size divided by the process count and the per-device batch size |
 | `save_strategy`, `save_steps`, `save_epochs` | Which clock saves, and how often |
-| `save_dir` | Directory of `checkpoint_*` folders. Empty skips the publish |
+| `save_dir` | Directory of `checkpoint_*` folders. Empty or null skips saving, resume, and the default infer checkpoint |
 | `save_total_limit` | How many checkpoints remain |
 | `eval_strategy`, `eval_steps`, `eval_epochs` | Which clock evaluates, and how often |
 | `log_strategy`, `log_steps`, `log_epochs` | Which clock reports, and how often |

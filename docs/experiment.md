@@ -51,8 +51,8 @@ The task's `section` picks which block supplies `seed` and `mixed_precision`: `t
 | `get_optimizer` | no | Defaults to `get_optimizer` from `utils_for_main` |
 | `run_suffix` | no | Appended to both the run name and the checkpoint directory (e.g. sweep suffix) |
 | `disable_train_hooks` | no | Default `True`; disables handlers in `train_hook_handlers` |
-| `pre_dist_teardown` | no | `(TrainRun) -> None`, see [Teardown hooks](#teardown-hooks) |
-| `post_dist_teardown` | no | `(TrainRun) -> None`, see [Teardown hooks](#teardown-hooks) |
+| `after_train` | no | `(TrainRun) -> None`, see [Hooks](#hooks) |
+| `on_finish` | no | `(TrainRun) -> None`, see [Hooks](#hooks) |
 
 Canonical pattern (`example/butterfly_edm/main.py`):
 
@@ -70,9 +70,9 @@ def main(cfg: DictConfig):
 
 `TrainSpec.run` builds the model, data, optimizer, scheduler, and a `MyDistributedPipeline` (from `get_train_class()`), then calls `pipeline.train()`. Bundle `"callbacks"` go to the pipeline constructor, ahead of the reporter callback. They are registered before the checkpoint load, so they also see `POST_LOAD` on resume. The pipeline is seeded with `train.seed`. When the latest checkpoint carries a `report_run.json` for the configured backend, the tracked run resumes.
 
-Checkpoints go under `checkpoint_root(cfg, run_suffix)`, which `InferSpec` uses too. A `ConfigSnapshotCallback` writes the resolved config, including the scheduler rewrite, into every published checkpoint as `config.yaml`. Add one to any extra pipeline you train in a hook (`example/moon_rectified_flow/main.py` does) so its checkpoints are self-describing too.
+Checkpoints go under `checkpoint_root(cfg, run_suffix)`, which `InferSpec` uses too. When `train.save_dir` is empty or null, `checkpoint_root` returns `""`, the pipeline does not save, and inference must set `infer.checkpoint_dir`. A `ConfigSnapshotCallback` writes the resolved config, including the scheduler rewrite, into every published checkpoint as `config.yaml`. Add one to any extra pipeline you train in a hook (`example/moon_rectified_flow/main.py` does) so its checkpoints are self-describing too.
 
-`TrainRun` holds `cfg`, `accelerator`, `logger`, `reporter`, `model_bundle`, the datasets, optimizer, scheduler, configs, `collate_fn`, and `pipeline`. Teardown hooks receive it after training, with `pipeline` reflecting post-train state (latest checkpoint path, halt flag, etc.).
+`TrainRun` holds `cfg`, `accelerator`, `logger`, `reporter`, `model_bundle`, the datasets, optimizer, scheduler, configs, `collate_fn`, and `pipeline`. Hooks receive it after training, with `pipeline` reflecting post-train state (latest checkpoint path, halt flag, etc.).
 
 ## Inference: InferSpec
 
@@ -81,7 +81,7 @@ Checkpoints go under `checkpoint_root(cfg, run_suffix)`, which `InferSpec` uses 
 | `get_model` | yes | Same builder as training; the model is constructed, then the checkpoint is loaded into it |
 | `get_dataset` | no | `(cfg) -> (train, val, test)` when inference needs data (inpainting, reconstructions) |
 | `infer` | no | `(InferRun) -> Any` on every rank; the return value is stored in `run.outputs` |
-| `post_dist_teardown` | no | `(InferRun) -> None` on the main process, see [Teardown hooks](#teardown-hooks) |
+| `on_finish` | no | `(InferRun) -> None` on the main process, see [Hooks](#hooks) |
 | `run_suffix` | no | Must match the training `run_suffix` so the same checkpoint directory is found |
 
 `InferSpec.run` does the following on every rank:
@@ -92,7 +92,7 @@ Checkpoints go under `checkpoint_root(cfg, run_suffix)`, which `InferSpec` uses 
 4. Load `model.safetensors` strictly; a missing or unexpected key raises instead of silently keeping random weights. Strict loading catches shape changes; the config warning catches values that keep the shapes.
 5. Move the model to `accelerator.device` in eval mode, load the datasets, and call `infer`.
 
-`infer` and `post_dist_teardown` both run under `accelerator.autocast()`, so `infer.mixed_precision` (for example `bf16`) applies to them. The framework does not add `torch.no_grad()`, because classifier guidance and Langevin sampling need gradients; wrap pure forward passes yourself.
+`infer` and `on_finish` both run under `accelerator.autocast()`, so `infer.mixed_precision` (for example `bf16`) applies to them. The framework does not add `torch.no_grad()`, because classifier guidance and Langevin sampling need gradients; wrap pure forward passes yourself.
 
 `InferRun` holds `cfg`, `accelerator`, `logger`, `reporter`, `model_bundle`, `checkpoint_dir`, `train_cfg`, `train_set`, `val_set`, `test_set` (each `None` without `get_dataset`), and `outputs`. Each inference opens a new tracked run named after the training run with an `-infer` suffix; it never resumes the training run.
 
@@ -111,7 +111,7 @@ Each `main*.py` has a matching `infer*.py` that uses the same config file (`exam
 SPEC = InferSpec(
     get_model=get_model,
     get_dataset=get_dataset,
-    post_dist_teardown=post_dist_teardown,  # sampling and plots
+    on_finish=on_finish,  # sampling and plots
 )
 ```
 
@@ -121,11 +121,11 @@ uv run python infer.py train.lr=1e-3                       # latest checkpoint o
 uv run python infer.py infer.checkpoint_dir=/path/to/checkpoint_epoch0_step100_global100
 ```
 
-## Teardown hooks
+## Hooks
 
-`pre_dist_teardown(run)` (`TrainSpec` only) and `infer(run)` (`InferSpec` only) run on **every rank** while the process group is still alive. `pre_dist_teardown` runs after `pipeline.train()` returns and is skipped when the pipeline halted. Use these for work that must stay distributed (a second training phase, sharded inference, collective metrics) while the same reporter remains open.
+`after_train(run)` (`TrainSpec` only) and `infer(run)` (`InferSpec` only) run on **every rank** inside `Task.run`, while the process group is still alive. `after_train` runs after `pipeline.train()` returns and is skipped when `pipeline.halted`. Use these for work that must stay distributed (a second training phase, sharded inference, collective metrics) while the same reporter remains open.
 
-`post_dist_teardown(run)` runs on **`accelerator.is_main_process` only**, after:
+`on_finish(run)` runs on **`accelerator.is_main_process` only**, inside `Task.finish`, after:
 
 1. `accelerator.wait_for_everyone()`
 2. `accelerator.end_training()` (process group destroyed)
@@ -133,7 +133,7 @@ uv run python infer.py infer.checkpoint_dir=/path/to/checkpoint_epoch0_step100_g
 
 Use it for sampling, plotting, and other single-process work that should not hold the distributed group open. The reporter is still open, so `run.reporter.log(...)` reaches the tracked run (see `example/moon_vae/infer.py`).
 
-If reporter setup or `task.run` fails, `run_experiment` destroys the group early and **does not** call `post_dist_teardown`.
+If reporter setup or `task.run` fails, `run_experiment` destroys the group early and **does not** call `on_finish`.
 
 ## Custom tasks
 

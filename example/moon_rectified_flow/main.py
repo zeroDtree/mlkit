@@ -12,7 +12,7 @@ from utils import get_collate_fn, get_dataset, get_model
 from mlkit.util.experiment import ConfigSnapshotCallback, TrainSpec, run_experiment
 
 
-def pre_dist_teardown(run):
+def after_train(run):
     """Train the conditional flow on every rank while the process group is alive."""
     cfg = run.cfg
     accelerator = run.accelerator
@@ -71,7 +71,7 @@ SPEC = TrainSpec(
     get_model=get_model,
     get_dataset=get_dataset,
     get_collate=get_collate_fn,
-    pre_dist_teardown=pre_dist_teardown,
+    after_train=after_train,
     disable_train_hooks=True,
 )
 

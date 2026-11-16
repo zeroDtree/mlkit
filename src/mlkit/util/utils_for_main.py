@@ -1,9 +1,7 @@
 import os
 
-import torch
 from accelerate import Accelerator
 from omegaconf import DictConfig
-from torch.nn import Module
 
 from mlkit.util.training_steps import get_total_training_steps
 
@@ -85,36 +83,3 @@ def get_new_save_dir(save_dir, cfg: DictConfig, prefix: str = "", suffix: str = 
     new_save_dir = os.path.join(save_dir, f"{model_name}/{dataset_name}/-lr:{lr}-bs:{batch_size}")
     new_save_dir = f"{prefix}{new_save_dir}{suffix}"
     return new_save_dir
-
-
-def load_checkpoint(model: Module, final_model_ckpt_path: str) -> Module:
-    # Handle different checkpoint formats
-    if final_model_ckpt_path.endswith(".safetensors"):
-        print(f"Loading safetensors checkpoint: {final_model_ckpt_path}")
-        try:
-            from safetensors.torch import load_file
-
-            checkpoint = load_file(final_model_ckpt_path)
-            # For safetensors, the state_dict is directly the checkpoint
-            model.load_state_dict(checkpoint, strict=False)
-            print(f"Loaded model from safetensors: {final_model_ckpt_path}")
-        except ImportError:
-            print("safetensors library not found. Install with: pip install safetensors")
-            raise
-        except Exception as e:
-            print(f"Error loading safetensors file: {e}")
-            print("Trying to load model from the checkpoint...")
-            model.load_state_dict(checkpoint, strict=False)
-            print(f"Loaded model from safetensors: {final_model_ckpt_path}")
-    else:
-        print(f"Loading PyTorch checkpoint: {final_model_ckpt_path}")
-        checkpoint = torch.load(final_model_ckpt_path, map_location="cpu", weights_only=False)
-        # print(f"Loaded PyTorch checkpoint with keys: {list(checkpoint.keys())}")
-        if "model" in checkpoint:
-            # If saved via pipeline, the diffuser is under 'model' key
-            model.load_state_dict(checkpoint["model"])
-        else:
-            # If saved directly as state_dict
-            model.load_state_dict(checkpoint)
-        print(f"Loaded model from PyTorch checkpoint: {final_model_ckpt_path}")
-    return model
